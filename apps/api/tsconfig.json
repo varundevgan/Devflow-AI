@@ -1,0 +1,13 @@
+{
+  "extends": "@devflow/tsconfig/nestjs.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    // TypeScript 7 removed baseUrl; path mappings are now resolved relative to
+    // the directory holding this tsconfig, so they must start with "./".
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

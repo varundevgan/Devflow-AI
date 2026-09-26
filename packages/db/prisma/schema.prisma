@@ -1,0 +1,29 @@
+// DevFlow AI — database schema.
+//
+// Models are added per milestone, starting with User in Milestone 1.
+// Two conventions apply to everything added later:
+//   1. Every organization-owned table carries organizationId directly, even when
+//      it is derivable through a relation. Tenant filters stay single-table and
+//      composite indexes stay possible.
+//   2. Timestamps are @default(now()) / @updatedAt, never set by application code.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// The connection URL lives in prisma.config.ts (Prisma 7 moved it out of the
+// schema). The application client receives its connection through a driver
+// adapter instead — see PrismaService.
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String        @id @default(uuid(7)) @db.Uuid
+  email        String        @unique
+  name         String      
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  @@map("users")
+}

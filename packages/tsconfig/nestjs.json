@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "DevFlow NestJS",
+  "extends": "./base.json",
+  "compilerOptions": {
+    // TypeScript 7 removed the legacy "node10" resolver. "nodenext" emits CommonJS
+    // here because apps/api has no "type": "module" in its package.json, and it
+    // resolves dependencies the way Node actually does, honouring their exports maps.
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "rootDir": "src",
+    "outDir": "dist",
+
+    // Declared explicitly rather than relying on ambient scanning of node_modules/@types.
+    // Only these global type packages enter scope, so a stray dependency cannot
+    // silently add globals such as Jest's `describe` to production code.
+    "types": ["node"],
+
+    // Nest's DI, routing and validation all read metadata that these two emit.
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+
+    // Nest assigns injected dependencies through the constructor at runtime, which
+    // the compiler cannot see. Leaving this on produces false positives on every provider.
+    "strictPropertyInitialization": false
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

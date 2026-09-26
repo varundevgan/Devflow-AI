@@ -1,0 +1,13 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# pnpm 10 blocks dependency lifecycle scripts by default, because a postinstall
+# script in a compromised transitive dependency is a direct path to code
+# execution on developer machines and CI runners. Only packages that genuinely
+# need install-time work are listed here.
+#
+# Prisma downloads its platform-specific query engine binary during postinstall.
+onlyBuiltDependencies:
+  - "@prisma/engines"
+  - prisma
