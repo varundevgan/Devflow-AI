@@ -1,8 +1,10 @@
 # DevFlow AI — Agent Handoff
 
-**Last verified:** 25 September 2026, by direct inspection of the repository, the running
-PostgreSQL instance, and the installed toolchain. Where this document and the code
-disagree, **the code is right and this document is stale** — fix the document.
+**Last verified:** 26 September 2026, against the repository, git, and `typecheck` for
+`@devflow/api` and `@devflow/db`. Live PostgreSQL was **not** re-queried this session;
+the database claims below are from the 26 Sep session that applied the migration.
+Where this document and the code disagree, **the code is right and this document is
+stale** — fix the document.
 
 > **If you are a new agent: read section 10 first.** It tells you exactly what to do
 > before writing anything.
@@ -41,7 +43,8 @@ above are the story.
 
 **Current scope.** Narrowed from an original 36-phase plan to **15 milestones**
 (section 5). Sprints, engineering analytics and MCP are documented as future work.
-Currently at **Milestone 1, increment 3 of 4** — see section 4.
+Currently at **Milestone 1, increment 3 done**. Increment 4 is CI. The Next.js shell
+follows that. See section 4.
 
 ---
 
@@ -261,7 +264,7 @@ Each of these was argued, not assumed. Do not silently reverse one.
 
 ## 4. Current repository state
 
-**Verified by inspection on 25 Sep 2026, and re-checked the same day** (toolchain, `typecheck` on `@devflow/api` and `@devflow/db`, live PostgreSQL, migrations folder, git). Everything below is fact, not intent. The `User` model is still the open task.
+**Verified by inspection on 26 Sep 2026** (toolchain, `typecheck` on `@devflow/api` and `@devflow/db`, migrations folder, git). `@devflow/web` typecheck fails: no inputs, and `@devflow/tsconfig/nextjs.json` does not resolve because Next.js is not installed. Everything below is fact, not intent. Increment 3 is done. CI does not exist yet.
 
 ### Toolchain actually installed
 
@@ -296,12 +299,13 @@ apps/api/                       ✅ RUNS
   package.json  tsconfig.json  nest-cli.json
   src/main.ts                   bootstrap, reads port from AppConfig
   src/app.module.ts             composition root: [ConfigModule, HealthModule]
-  src/config/env.schema.ts      Zod schema: NODE_ENV, API_PORT only
+  src/config/env.schema.ts      Zod schema: NODE_ENV, API_PORT, DATABASE_URL
   src/config/load-env.ts        upward .env search + validation, throws on invalid
   src/config/app-config.ts      typed frozen config class, own DI token
   src/config/config.module.ts   @Global
   src/health/health.{module,controller,service}.ts   GET /health (liveness)
-  src/{common,infra,modules}/   EMPTY (.gitkeep only)
+  src/infra/prisma/             PrismaModule + PrismaService (driver adapter)
+  src/{common,modules}/         EMPTY (.gitkeep only)
   test/                         EMPTY
 
 apps/web/                       ⛔ SKELETON ONLY — no Next.js installed
@@ -313,8 +317,8 @@ apps/worker/README.md           ⛔ README only, intentionally no package.json
 packages/db/                    ✅ typechecks
   package.json                  prisma 7.10.0, @prisma/client, adapter-pg, pg, dotenv-cli
   prisma.config.ts              Prisma 7 config: schema path, migrations path, datasource url
-  prisma/schema.prisma          generator + datasource + User model (SEE ISSUES BELOW)
-  prisma/migrations/            EMPTY — no migration has ever been created
+  prisma/schema.prisma          generator + datasource + User model
+  prisma/migrations/            20260926061922_init_users (creates "users")
   src/index.ts                  re-exports @prisma/client
 packages/contracts/             ✅ typechecks, but src/index.ts is `export {}` — empty
 packages/eslint-config/         package.json + base.js. ESLint is NOT INSTALLED anywhere
@@ -323,7 +327,7 @@ packages/tsconfig/              base / library / nestjs / nextjs — all in use
 docs/architecture.md            current, matches reality
 docs/adr/0001-modular-monolith.md
 docs/setup.md
-.github/workflows/              EMPTY — no CI exists
+.github/workflows/              .gitkeep only — no CI workflow
 ```
 
 ### Database state (verified by querying it)
@@ -343,9 +347,9 @@ docs/setup.md
 Single root `.env`, copied from `.env.example`, holding `NODE_ENV`, `DATABASE_URL`,
 `REDIS_URL`, `API_PORT`, `CORS_ORIGIN`, `NEXT_PUBLIC_API_URL`.
 
-Only `NODE_ENV` and `API_PORT` are in the Zod schema, deliberately: **the schema only
-contains variables that code actually reads.** `DATABASE_URL` joins it when Prisma is
-wired into the API; `CORS_ORIGIN` when the browser calls us; `REDIS_URL` at milestone 6.
+`NODE_ENV`, `API_PORT`, and `DATABASE_URL` are in the Zod schema. **The schema only
+contains variables that code actually reads.** `PrismaService` reads `DATABASE_URL`.
+`CORS_ORIGIN` joins when the browser calls us; `REDIS_URL` at milestone 6.
 
 `packages/db` reads `DATABASE_URL` via `dotenv -e ../../.env` in its package scripts.
 
@@ -364,8 +368,8 @@ wired into the API; `CORS_ORIGIN` when the browser calls us; `REDIS_URL` at mile
 - `docker-compose.yml` exists but has never been run.
 
 **Missing entirely**
-- Git repository, CI, ESLint runtime, any test framework, any test.
-- Next.js application.
+- CI workflow, ESLint runtime, any test framework, any test.
+- Next.js application (the `apps/web` package exists; Next.js is not installed).
 - Everything from milestone 2 onward.
 
 ### ⚠️ Known issues and unresolved items
@@ -374,8 +378,8 @@ wired into the API; `CORS_ORIGIN` when the browser calls us; `REDIS_URL` at mile
    `{status:"ok"}` when `SELECT 1` succeeds. A thrown query becomes
    `ServiceUnavailableException` ("Database is unavailable"), logged server-side.
    The failure path was not exercised against a stopped Postgres in this session.
-   Next increment is the Next.js shell, or git init — see section 5. Do not start
-   either without telling the user.
+   Git is done. Next increment is CI — see section 5. The Next.js shell comes after.
+   Do not start either without telling the user.
 
 2. **Node 25.1.0 is unsupported by Prisma.** It has worked so far. If anything bizarre
    happens during migration, this is suspect number one. Recommend Node 24 LTS.
@@ -389,7 +393,8 @@ wired into the API; `CORS_ORIGIN` when the browser calls us; `REDIS_URL` at mile
    `typescript-eslint` and `eslint-config-prettier` are not installed, and no app has an
    `eslint.config.mjs`.
 
-5. **No git repository.** `git init` and an initial commit are overdue.
+5. **Git is initialized and pushed.** Public repo: https://github.com/varundevgan/Devflow-AI
+   Branch `main` tracks `origin/main`. Initial commit is `175b9e7`. `.env` is gitignored.
 
 6. **`node_modules` contains leftovers** from the accidental Prisma 8 RC install
    (`@alchemy.run/cloudflare-runtime` and similar, with paths deep enough to break
@@ -414,18 +419,18 @@ wired into the API; `CORS_ORIGIN` when the browser calls us; `REDIS_URL` at mile
 - **Milestone 0** — architecture, ADR, repository skeleton.
 - **Milestone 1, increment 1** — NestJS boots, `GET /health`.
 - **Milestone 1, increment 2** — validated configuration.
+- **Milestone 1, increment 3** — Prisma, `User` model, first migration, `/health/ready`.
+  `users` is migrated, `PrismaService` is wired, `GET /health/ready` runs `SELECT 1`.
 
 ### In progress
 
-- **Milestone 1, increment 3** — Prisma, `User` model, first migration, `/health/ready`.
-  Done. `users` is migrated, `PrismaService` is wired, `GET /health/ready` runs `SELECT 1`.
+- **Milestone 1, increment 4** — GitHub Actions CI. `.github/workflows/ci.yml` exists locally and is untracked. It has not been pushed, and Actions has not run it.
 
 ### Remaining
 
 | # | Milestone | Portfolio-critical? |
 | --- | --- | --- |
-| 1 | Finish: `User` migration, `PrismaService`, `/health/ready` | Foundation |
-| 1 | Next.js shell + CI | Foundation |
+| 1 | CI, then the Next.js shell | Foundation |
 | 2 | Authentication (refresh rotation, reuse detection) | **Yes** |
 | 3 | Organizations, membership, RBAC, **tenant isolation test suite** | **Yes — highest value** |
 | 4 | Projects + issues, front to back (thin vertical slice) | **Yes** |
@@ -641,10 +646,10 @@ missing tenant filter is not the same class of problem as an awkward variable na
    file. Treat the code as the source of truth.
 
 4. **Identify the next increment.** As of this writing it is:
-   **Milestone 1 is not finished.** Increment 3 (User migration, `PrismaService`,
-   `/health/ready`) is done. Next is the Next.js shell and CI, unless the user
-   wants `git init` first. Do not start that work in the first response of a
-   new session; explain it and give one task.
+   **Milestone 1, increment 4 — CI.** Git is already initialized and pushed.
+   Increment 3 (User migration, `PrismaService`, `/health/ready`) is done.
+   The Next.js shell is the increment after CI. Do not start that work in the
+   first response of a new session; explain it and give one task.
 
 5. **Explain that increment to the user** using the section 7 workflow — what, why,
    architecture, files, concepts — and then **give him a small task and stop.**
@@ -661,7 +666,7 @@ pnpm --filter @devflow/api build
 pnpm --filter @devflow/api typecheck
 pnpm --filter @devflow/db generate      # regenerate Prisma client
 pnpm --filter @devflow/db validate      # validate schema
-pnpm --filter @devflow/db migrate       # migrate dev (NOT YET RUN)
+pnpm --filter @devflow/db migrate       # migrate dev (init_users already exists)
 node apps/api/dist/main.js              # start built API
 Invoke-RestMethod http://localhost:4000/health
 ```

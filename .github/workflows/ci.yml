@@ -1,0 +1,38 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          cache: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Write a placeholder env for Prisma generate
+        run: echo DATABASE_URL=postgresql://ci:ci@127.0.0.1:9/ci > .env
+
+      - name: Generate Prisma client
+        run: pnpm --filter @devflow/db generate
+
+      - name: Build the db package
+        run: pnpm --filter @devflow/db build
+
+      - name: Typecheck
+        run: pnpm --filter @devflow/api --filter @devflow/db --filter @devflow/contracts typecheck
