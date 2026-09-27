@@ -43,8 +43,8 @@ above are the story.
 
 **Current scope.** Narrowed from an original 36-phase plan to **15 milestones**
 (section 5). Sprints, engineering analytics and MCP are documented as future work.
-Currently at **Milestone 1, increment 3 done**. Increment 4 is CI. The Next.js shell
-follows that. See section 4.
+Currently at **Milestone 1, increment 5**. The Next.js shell serves a page on port 3000.
+`@devflow/web` is not in CI yet. See section 4.
 
 ---
 
@@ -421,16 +421,23 @@ contains variables that code actually reads.** `PrismaService` reads `DATABASE_U
 - **Milestone 1, increment 2** — validated configuration.
 - **Milestone 1, increment 3** — Prisma, `User` model, first migration, `/health/ready`.
   `users` is migrated, `PrismaService` is wired, `GET /health/ready` runs `SELECT 1`.
+- **Milestone 1, increment 4** — GitHub Actions CI. Run
+  [36242606456](https://github.com/varundevgan/Devflow-AI/actions/runs/36242606456)
+  on `a4a13d1` completed `success` for the `push` event. The job does not typecheck
+  `@devflow/web`.
 
 ### In progress
 
-- **Milestone 1, increment 4** — GitHub Actions CI. `.github/workflows/ci.yml` exists locally and is untracked. It has not been pushed, and Actions has not run it.
+- **Milestone 1, increment 5** — Next.js shell. Local `next dev` serves `GET /` 200 at
+  `http://localhost:3000/`. Packages are exact: `next@16.3.6`, `react@19.3.0`,
+  `react-dom@19.3.0`. `@devflow/web` typecheck passes while the dev server has generated
+  `.next` types. The web package is not in `ci.yml` yet.
 
 ### Remaining
 
 | # | Milestone | Portfolio-critical? |
 | --- | --- | --- |
-| 1 | CI, then the Next.js shell | Foundation |
+| 1 | Next.js shell | Foundation |
 | 2 | Authentication (refresh rotation, reuse detection) | **Yes** |
 | 3 | Organizations, membership, RBAC, **tenant isolation test suite** | **Yes — highest value** |
 | 4 | Projects + issues, front to back (thin vertical slice) | **Yes** |
@@ -646,10 +653,10 @@ missing tenant filter is not the same class of problem as an awkward variable na
    file. Treat the code as the source of truth.
 
 4. **Identify the next increment.** As of this writing it is:
-   **Milestone 1, increment 4 — CI.** Git is already initialized and pushed.
-   Increment 3 (User migration, `PrismaService`, `/health/ready`) is done.
-   The Next.js shell is the increment after CI. Do not start that work in the
-   first response of a new session; explain it and give one task.
+   **Add `@devflow/web` to CI.** The Next.js shell is implemented. `next-env.d.ts`
+   imports generated `.next` types, so typecheck needs `next typegen` (or `next build`)
+   first. Do not start that work in the first response of a new session; explain it
+   and give one task.
 
 5. **Explain that increment to the user** using the section 7 workflow — what, why,
    architecture, files, concepts — and then **give him a small task and stop.**

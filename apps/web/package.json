@@ -8,5 +8,15 @@
     "start": "next start --port 3000",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "next": "16.3.6",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@devflow/tsconfig": "workspace:*",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0"
   }
 }
