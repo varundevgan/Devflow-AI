@@ -43,8 +43,9 @@ above are the story.
 
 **Current scope.** Narrowed from an original 36-phase plan to **15 milestones**
 (section 5). Sprints, engineering analytics and MCP are documented as future work.
-Currently at **Milestone 1, increment 5**. The Next.js shell serves a page on port 3000.
-`@devflow/web` is not in CI yet. See section 4.
+Currently at **Milestone 1, increment 6**. The workflow change that typechecks
+`@devflow/web` is on a branch and is not proven until the pull request check is green.
+See section 4.
 
 ---
 
@@ -425,19 +426,22 @@ contains variables that code actually reads.** `PrismaService` reads `DATABASE_U
   [36242606456](https://github.com/varundevgan/Devflow-AI/actions/runs/36242606456)
   on `a4a13d1` completed `success` for the `push` event. The job does not typecheck
   `@devflow/web`.
+- **Milestone 1, increment 5** — Next.js shell. Committed in `aed5310`. Local `next dev`
+  serves `GET /` 200. The following CI run on that commit also succeeded, still without
+  `@devflow/web`.
 
 ### In progress
 
-- **Milestone 1, increment 5** — Next.js shell. Local `next dev` serves `GET /` 200 at
-  `http://localhost:3000/`. Packages are exact: `next@16.3.6`, `react@19.3.0`,
-  `react-dom@19.3.0`. `@devflow/web` typecheck passes while the dev server has generated
-  `.next` types. The web package is not in `ci.yml` yet.
+- **Milestone 1, increment 6** — Typecheck `@devflow/web` in CI. The workflow runs
+  `next typegen` before `tsc` and includes `@devflow/web`. `apps/web/next-env.d.ts` is
+  gitignored because `next dev` and `next typegen` point its imports at different
+  `.next` directories. Waiting on the pull request check.
 
 ### Remaining
 
 | # | Milestone | Portfolio-critical? |
 | --- | --- | --- |
-| 1 | Next.js shell | Foundation |
+| 1 | Typecheck `@devflow/web` in CI | Foundation |
 | 2 | Authentication (refresh rotation, reuse detection) | **Yes** |
 | 3 | Organizations, membership, RBAC, **tenant isolation test suite** | **Yes — highest value** |
 | 4 | Projects + issues, front to back (thin vertical slice) | **Yes** |
@@ -652,11 +656,11 @@ missing tenant filter is not the same class of problem as an awkward variable na
 3. **Report any discrepancy** between this document and what you find, and update this
    file. Treat the code as the source of truth.
 
-4. **Identify the next increment.** As of this writing it is:
-   **Add `@devflow/web` to CI.** The Next.js shell is implemented. `next-env.d.ts`
-   imports generated `.next` types, so typecheck needs `next typegen` (or `next build`)
-   first. Do not start that work in the first response of a new session; explain it
-   and give one task.
+4. **Identify the next increment.** As of this writing, increment 6 (typecheck
+   `@devflow/web` in CI) is committed on a branch and waiting for the pull request
+   check. After that check is green, the next increment is milestone 2,
+   authentication. Do not start that work in the first response of a new session;
+   explain it and give one task.
 
 5. **Explain that increment to the user** using the section 7 workflow — what, why,
    architecture, files, concepts — and then **give him a small task and stop.**
