@@ -34,5 +34,8 @@ jobs:
       - name: Build the db package
         run: pnpm --filter @devflow/db build
 
+      - name: Generate Next.js route types
+        run: pnpm --filter @devflow/web exec next typegen
+
       - name: Typecheck
-        run: pnpm --filter @devflow/api --filter @devflow/db --filter @devflow/contracts typecheck
+        run: pnpm --filter @devflow/api --filter @devflow/db --filter @devflow/contracts --filter @devflow/web typecheck
