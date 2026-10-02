@@ -1,8 +1,11 @@
 # DevFlow AI — Agent Handoff
 
-**Last verified:** 26 September 2026, against the repository, git, and `typecheck` for
-`@devflow/api` and `@devflow/db`. Live PostgreSQL was **not** re-queried this session;
-the database claims below are from the 26 Sep session that applied the migration.
+**Last verified:** 2 October 2026, against the repository, git, and live PostgreSQL.
+Three migrations are applied: `init_users`, `add_user_password_hash`, and
+`add_refresh_token`. `users` has 1 row (`ada@example.com`). `refresh_tokens` exists and
+has 0 rows. Branch `user-password-hash`. The schema, both later migrations, and the
+auth/users modules are uncommitted. `prisma validate` passed. `@devflow/api` typecheck
+passed. `@devflow/db` typecheck was not re-run this session.
 Where this document and the code disagree, **the code is right and this document is
 stale** — fix the document.
 
@@ -43,9 +46,9 @@ above are the story.
 
 **Current scope.** Narrowed from an original 36-phase plan to **15 milestones**
 (section 5). Sprints, engineering analytics and MCP are documented as future work.
-Currently at **Milestone 1, increment 6**. The workflow change that typechecks
-`@devflow/web` is on a branch and is not proven until the pull request check is green.
-See section 4.
+Currently at **Milestone 2**. Register and login work locally. The refresh-token table
+is migrated and empty. No cookie, JWT, or rotation is issued yet. The work is
+uncommitted on branch `user-password-hash`. See section 4.
 
 ---
 
@@ -191,7 +194,25 @@ When built, MCP is a **fourth entry point** (alongside HTTP, WebSocket and the i
 agent) over the *same* `ToolRegistry`. It adds a transport and an auth mechanism. It must
 not contain a single line of business logic.
 
-### Authentication — *not yet implemented (milestone 2)*
+### Authentication — *partial (milestone 2)*
+
+**Implemented and verified 2 Oct 2026** against the running API:
+
+- `POST /auth/register` and `POST /auth/login`. Zod `safeParse` in the controller; failure
+  throws `BadRequestException` with field messages. The password is not logged and is not
+  trimmed.
+- `UserService.registerUser` hashes with Node `crypto.argon2` (`argon2id`, 19 MiB, 2
+  passes, parallelism 1) and stores a PHC string in `password_hash`. The response omits
+  `passwordHash`. Duplicate email returns 409, including the `P2002` race.
+- `loginUser` re-derives the key with the salt stored in that PHC string and compares with
+  `timingSafeEqual`. An unknown email and a wrong password both return 401
+  `Invalid email or password`. The unknown-email path still runs Argon2, against a dummy
+  hash, so it does not return faster.
+- `bcrypt` is not an API dependency. `pnpm-workspace.yaml` still lists it under
+  `onlyBuiltDependencies`. That entry is unused.
+
+**Not built yet.** Login returns the user JSON and sets no cookie. Nest's `@Post` default
+makes a successful login **201**. The design below is still the target:
 
 - Short-lived signed **JWT access token** (~15 min) in an `httpOnly`, `secure`,
   `sameSite=lax` cookie.
@@ -265,7 +286,7 @@ Each of these was argued, not assumed. Do not silently reverse one.
 
 ## 4. Current repository state
 
-**Verified by inspection on 26 Sep 2026** (toolchain, `typecheck` on `@devflow/api` and `@devflow/db`, migrations folder, git). `@devflow/web` typecheck fails: no inputs, and `@devflow/tsconfig/nextjs.json` does not resolve because Next.js is not installed. Everything below is fact, not intent. Increment 3 is done. CI does not exist yet.
+**Verified by inspection on 2 Oct 2026** (schema, migration folder, git, live PostgreSQL, API typecheck). Everything below is fact, not intent. Milestone 1 is on `main`, including CI that typechecks `@devflow/web`. Milestone 2 is local only, on branch `user-password-hash`, and is not committed.
 
 ### Toolchain actually installed
 
@@ -299,27 +320,35 @@ turbo.json                      task graph
 apps/api/                       ✅ RUNS
   package.json  tsconfig.json  nest-cli.json
   src/main.ts                   bootstrap, reads port from AppConfig
-  src/app.module.ts             composition root: [ConfigModule, HealthModule]
+  src/app.module.ts             composition root: Config, Health, Prisma, User, Auth
   src/config/env.schema.ts      Zod schema: NODE_ENV, API_PORT, DATABASE_URL
   src/config/load-env.ts        upward .env search + validation, throws on invalid
   src/config/app-config.ts      typed frozen config class, own DI token
   src/config/config.module.ts   @Global
-  src/health/health.{module,controller,service}.ts   GET /health (liveness)
-  src/infra/prisma/             PrismaModule + PrismaService (driver adapter)
-  src/{common,modules}/         EMPTY (.gitkeep only)
+  src/health/health.{module,controller,service}.ts   GET /health, GET /health/ready
+  src/infra/prisma/             PrismaModule (@Global) + PrismaService (driver adapter)
+  src/modules/users/            UserService: registerUser, loginUser, argon2 hash/verify
+  src/modules/auth/             AuthModule imports UserModule and mounts AuthController
+                                POST /auth/register, POST /auth/login
+                                register.schema.ts, login.schema.ts
+  src/common/                   EMPTY
   test/                         EMPTY
 
-apps/web/                       ⛔ SKELETON ONLY — no Next.js installed
-  package.json (scripts only, zero deps)  tsconfig.json
-  src/{app,components,lib}/ public/       EMPTY (.gitkeep only)
+apps/web/                       ✅ Next.js 16.3.6 shell, exact pins with React 19.3.0
+  next.config.ts                agentRules: false
+  src/app/layout.tsx            root layout
+  src/app/page.tsx              GET / renders without calling the API
+  next-env.d.ts                 gitignored; `next dev` and `next typegen` rewrite it
 
 apps/worker/README.md           ⛔ README only, intentionally no package.json
 
 packages/db/                    ✅ typechecks
   package.json                  prisma 7.10.0, @prisma/client, adapter-pg, pg, dotenv-cli
   prisma.config.ts              Prisma 7 config: schema path, migrations path, datasource url
-  prisma/schema.prisma          generator + datasource + User model
-  prisma/migrations/            20260926061922_init_users (creates "users")
+  prisma/schema.prisma          User (passwordHash) and RefreshToken
+  prisma/migrations/            20260926061922_init_users
+                                20260927111954_add_user_password_hash (uncommitted)
+                                20261002104809_add_refresh_token (applied, uncommitted)
   src/index.ts                  re-exports @prisma/client
 packages/contracts/             ✅ typechecks, but src/index.ts is `export {}` — empty
 packages/eslint-config/         package.json + base.js. ESLint is NOT INSTALLED anywhere
@@ -328,20 +357,35 @@ packages/tsconfig/              base / library / nestjs / nextjs — all in use
 docs/architecture.md            current, matches reality
 docs/adr/0001-modular-monolith.md
 docs/setup.md
-.github/workflows/              .gitkeep only — no CI workflow
+.github/workflows/ci.yml        typecheck api, db, contracts, and web after next typegen
 ```
 
 ### Database state (verified by querying it)
 
-- PostgreSQL **18.3** running as a Windows service on `localhost:5432`.
+Re-queried 2 October 2026: `\dt`, `\d refresh_tokens`, `_prisma_migrations`,
+`count(*)` from `users` and `refresh_tokens`, and the single user's email.
+Server version, role attributes, extensions, and `pg_available_extensions` were
+**not** re-checked this session.
+
+- PostgreSQL **18.3** running as a Windows service on `localhost:5432`. (version not re-checked)
 - Role `devflow` exists: `CREATEDB = true`, `SUPERUSER = false`. (CREATEDB is needed for
   Prisma's *shadow database* during `migrate dev`; production uses `migrate deploy`,
-  which does not need it.)
-- Database `devflow` exists, owned by `devflow`.
-- **`public` schema contains 0 tables.** No migration has been applied.
-- Installed extensions: `plpgsql` only. **`citext` is NOT installed.**
+  which does not need it. Role attributes not re-checked.)
+- Database `devflow` exists. Connected as `devflow` on `localhost`.
+- Tables: `_prisma_migrations`, `users`, and `refresh_tokens`. Applied migrations:
+  `20260926061922_init_users` (26 Sep 2026),
+  `20260927111954_add_user_password_hash` (27 Sep 2026, 16:49), and
+  `20261002104809_add_refresh_token` (2 Oct 2026, 16:18).
+- `users.password_hash` is `text NOT NULL` with no default. **1 row:**
+  `ada@example.com` / `Ada Lovelace`, inserted by a local register call. Password used
+  then was `correct-horse`. Registering that email again returns 409.
+- `refresh_tokens`: `token_hash` text unique, `user_id` uuid FK to `users(id)`
+  `ON DELETE CASCADE`, `family_id` uuid not null, `expires_at` not null, `revoked_at`
+  nullable, indexes on `family_id` and `user_id`. **0 rows.** No application code writes
+  this table yet.
+- Installed extensions: `plpgsql` only. **`citext` is NOT installed.** (not re-checked)
 - **`vector` is NOT AVAILABLE** in `pg_available_extensions` — pgvector is not bundled
-  with the Windows installer and building it natively is unpleasant.
+  with the Windows installer and building it natively is unpleasant. (not re-checked)
 
 ### Configuration state
 
@@ -362,25 +406,34 @@ contains variables that code actually reads.** `PrismaService` reads `DATABASE_U
 - Configuration: Zod-validated, fails fast, typed `AppConfig` injected via DI, real env
   vars override `.env`. Verified: invalid `API_PORT` exits 1 before binding a port.
 - Prisma installed, configured for v7, client generates successfully.
-- All three packages pass `typecheck`.
+- `@devflow/api` typecheck passed 2 Oct 2026. `@devflow/db` and `@devflow/contracts`
+  were not re-run this session.
+- `POST /auth/register` and `POST /auth/login`, verified against the running API on
+  1–2 Oct 2026. Register returns the user without `passwordHash`. Login returns 201
+  with the same public fields, or 401 `Invalid email or password` for both an unknown
+  email and a wrong password.
 
 **Partially done**
-- `User` migration `20260926061922_init_users` is applied. `PrismaService` is wired. `GET /health/ready` is implemented. Verified: `$connect()` does not open a Postgres connection with the pg adapter; the readiness query does.
+- `User` migration `20260926061922_init_users` is applied. `PrismaService` is wired. `GET /health/ready` is implemented. Verified earlier: `$connect()` does not open a Postgres connection with the pg adapter; the readiness query does.
+- `20260927111954_add_user_password_hash` and `20261002104809_add_refresh_token` are
+  applied on local PostgreSQL. Both migration directories, the schema, and the API
+  modules are uncommitted on `user-password-hash`.
+- `refresh_tokens` matches the reuse-detection model (`token_hash`, `family_id`,
+  nullable `revoked_at`) but nothing inserts or rotates a token.
 - `docker-compose.yml` exists but has never been run.
 
 **Missing entirely**
-- CI workflow, ESLint runtime, any test framework, any test.
-- Next.js application (the `apps/web` package exists; Next.js is not installed).
-- Everything from milestone 2 onward.
+- ESLint runtime, any test framework, any test.
+- Access-token JWT, httpOnly cookies, refresh-token issue/rotate/reuse detection.
 
 ### ⚠️ Known issues and unresolved items
 
-1. **Milestone 1, increment 3 is done through readiness.** `GET /health/ready` returns
-   `{status:"ok"}` when `SELECT 1` succeeds. A thrown query becomes
-   `ServiceUnavailableException` ("Database is unavailable"), logged server-side.
-   The failure path was not exercised against a stopped Postgres in this session.
-   Git is done. Next increment is CI — see section 5. The Next.js shell comes after.
-   Do not start either without telling the user.
+1. **Milestone 2 is in progress and uncommitted** on `user-password-hash`. Register and
+   login work. `refresh_tokens` is migrated and unused. The open increment is issuing
+   the access cookie and the refresh token on login (section 10). `GET /health/ready`
+   still returns `{status:"ok"}` when `SELECT 1` succeeds. The readiness failure path
+   was not exercised against a stopped Postgres. Milestone 1, including web typecheck
+   in CI, is on `main` at `bdd866e`.
 
 2. **Node 25.1.0 is unsupported by Prisma.** It has worked so far. If anything bizarre
    happens during migration, this is suspect number one. Recommend Node 24 LTS.
@@ -395,7 +448,8 @@ contains variables that code actually reads.** `PrismaService` reads `DATABASE_U
    `eslint.config.mjs`.
 
 5. **Git is initialized and pushed.** Public repo: https://github.com/varundevgan/Devflow-AI
-   Branch `main` tracks `origin/main`. Initial commit is `175b9e7`. `.env` is gitignored.
+   `main` tracks `origin/main` at `bdd866e`. The working branch is `user-password-hash`
+   and was not pushed as of 2 Oct 2026. Initial commit is `175b9e7`. `.env` is gitignored.
 
 6. **`node_modules` contains leftovers** from the accidental Prisma 8 RC install
    (`@alchemy.run/cloudflare-runtime` and similar, with paths deep enough to break
@@ -410,6 +464,22 @@ contains variables that code actually reads.** `PrismaService` reads `DATABASE_U
 
 9. **The sandbox on this machine cannot enforce filesystem isolation**, so every shell
    command must be run with elevated permission and will prompt the user.
+
+10. **Bare `pnpm` can resolve to the wrong binary.** PowerShell finds
+    `C:\Users\varun\AppData\Local\Author Software\nvm\.nodejs\pnpm.exe` first. That stub
+    prints `error: CommandNotFound`. The real CLI is `%APPDATA%\npm\pnpm.cmd`, version
+    **10.33.2**. The saved user `PATH` was reordered on 30 Sep 2026 so
+    `AppData\Roaming\npm` comes before the nvm directory. A terminal started before
+    that change, including one inherited from an already-running Cursor, still has the
+    old order. Refresh it with
+    `$env:PATH = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')`,
+    or quit Cursor and open it again.
+
+11. **PowerShell 5.1 strips double quotes** before they reach `curl.exe`, so
+    `-d '{"name":"Ada"}'` arrives as `{name:Ada}` and Express returns 400
+    `Expected property name or '}' in JSON at position 1`. Use `Invoke-RestMethod`, or
+    `curl.exe --%` with `\"` around JSON strings. `Invoke-WebRequest` is still the wrong
+    tool on Windows PowerShell 5.1.
 
 ---
 
@@ -427,22 +497,27 @@ contains variables that code actually reads.** `PrismaService` reads `DATABASE_U
   on `a4a13d1` completed `success` for the `push` event. The job does not typecheck
   `@devflow/web`.
 - **Milestone 1, increment 5** — Next.js shell. Committed in `aed5310`. Local `next dev`
-  serves `GET /` 200. The following CI run on that commit also succeeded, still without
-  `@devflow/web`.
+  serves `GET /` 200.
+- **Milestone 1, increment 6** — Typecheck `@devflow/web` in CI. Merged to `main` in
+  `bdd866e` (pull request #1). The pull request run
+  [36314107241](https://github.com/varundevgan/Devflow-AI/actions/runs/36314107241)
+  succeeded, including `next typegen` and the web typecheck. `apps/web/next-env.d.ts`
+  is gitignored.
 
 ### In progress
 
-- **Milestone 1, increment 6** — Typecheck `@devflow/web` in CI. The workflow runs
-  `next typegen` before `tsc` and includes `@devflow/web`. `apps/web/next-env.d.ts` is
-  gitignored because `next dev` and `next typegen` point its imports at different
-  `.next` directories. Waiting on the pull request check.
+- **Milestone 2, authentication.** Register and login are implemented and verified
+  locally (section 2). `refresh_tokens` is applied and empty. Next increment: on
+  successful login, set an httpOnly access-token cookie and store only the SHA-256
+  of a new refresh token. Do not put `organizationId` on that table. Do not return
+  either token in the JSON body. Schema and migrations are still uncommitted on
+  `user-password-hash`.
 
 ### Remaining
 
 | # | Milestone | Portfolio-critical? |
 | --- | --- | --- |
-| 1 | Typecheck `@devflow/web` in CI | Foundation |
-| 2 | Authentication (refresh rotation, reuse detection) | **Yes** |
+| 2 | Authentication: register, then login, refresh rotation, reuse detection | **Yes** |
 | 3 | Organizations, membership, RBAC, **tenant isolation test suite** | **Yes — highest value** |
 | 4 | Projects + issues, front to back (thin vertical slice) | **Yes** |
 | 5 | Comments, labels, issue detail UI | Yes |
@@ -656,11 +731,15 @@ missing tenant filter is not the same class of problem as an awkward variable na
 3. **Report any discrepancy** between this document and what you find, and update this
    file. Treat the code as the source of truth.
 
-4. **Identify the next increment.** As of this writing, increment 6 (typecheck
-   `@devflow/web` in CI) is committed on a branch and waiting for the pull request
-   check. After that check is green, the next increment is milestone 2,
-   authentication. Do not start that work in the first response of a new session;
-   explain it and give one task.
+4. **Identify the next increment.** Register and login already exist. Passwords are
+   Node `crypto.argon2` (`argon2id`), not bcrypt. Do not add a hashing package.
+   `refresh_tokens` is migrated and has no rows. The next increment is the session
+   issued by login: a short-lived JWT access token in an httpOnly cookie, and a
+   refresh token of 32 random bytes whose SHA-256 is the only form stored in
+   `token_hash`. The raw refresh token goes in a second httpOnly cookie, never in
+   the JSON body and never in `localStorage`. The access token carries `userId`
+   only. Explain that increment and give one small task. Do not start it by writing
+   the service. Rotation and family reuse detection are the increment after issue.
 
 5. **Explain that increment to the user** using the section 7 workflow — what, why,
    architecture, files, concepts — and then **give him a small task and stop.**
