@@ -1,6 +1,14 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
+export const ACCESS_TOKEN_COOKIE = "access_token";
 export const ACCESS_TOKEN_EXPIRE = 15 * 60 * 1000;
+
+export class InvalidAccessTokenError extends Error {
+  constructor() {
+    super("Invalid access token");
+    this.name = "InvalidAccessTokenError";
+  }
+}
 
 type AccessTokenHeader = {
   alg: "HS256";
@@ -56,7 +64,7 @@ export function verifyAccessToken(token: string, secret: string): { userId: stri
     encodedPayload.length === 0 ||
     encodedSignature.length === 0
   ) {
-    throw new Error("Invalid access token");
+    throw new InvalidAccessTokenError();
   }
 
   // HMAC-SHA256 only. The header's alg is not consulted until the signature matches,
@@ -69,12 +77,12 @@ export function verifyAccessToken(token: string, secret: string): { userId: stri
     expectedSignature.length !== actualSignature.length ||
     !timingSafeEqual(actualSignature, expectedSignature)
   ) {
-    throw new Error("Invalid access token");
+    throw new InvalidAccessTokenError();
   }
 
   const header = decodeJsonObject(encodedHeader);
   if (header === undefined || header.alg !== "HS256" || header.typ !== "JWT") {
-    throw new Error("Invalid access token");
+    throw new InvalidAccessTokenError();
   }
 
   const payload = decodeJsonObject(encodedPayload);
@@ -82,10 +90,10 @@ export function verifyAccessToken(token: string, secret: string): { userId: stri
   const exp = payload?.exp;
   const now = Date.now() / 1000;
   if (typeof sub !== "string" || sub.length === 0) {
-    throw new Error("Invalid access token");
+    throw new InvalidAccessTokenError();
   }
   if (typeof exp !== "number" || !Number.isFinite(exp) || exp <= now) {
-    throw new Error("Invalid access token");
+    throw new InvalidAccessTokenError();
   }
 
   return { userId: sub };

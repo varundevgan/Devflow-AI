@@ -1,10 +1,20 @@
-import { BadRequestException, Body, Controller, Post, Res } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+} from "@nestjs/common";
 import type { Response } from "express";
 import { REFRESH_TOKEN_30_DAYS_EXPIRE, UserService } from "../users/users.service";
 import { registerSchema } from "./register.schema";
 import { loginSchema } from "./login.schema";
 import { AppConfig } from "@/config/app-config";
-import { ACCESS_TOKEN_EXPIRE, generateAccessToken } from "./access.token";
+import { ACCESS_TOKEN_COOKIE, ACCESS_TOKEN_EXPIRE, generateAccessToken } from "./access.token";
+import { AccessTokenGuard, type AuthenticatedRequest } from "./access-token.guard";
 
 @Controller("auth")
 export class AuthController {
@@ -42,7 +52,7 @@ export class AuthController {
     const { user, refreshToken } = await this.userService.loginUser(parsed.data);
     const accessToken = generateAccessToken(user.id, this.appConfig.accessTokenSecret);
 
-    response.cookie("access_token", accessToken, {
+    response.cookie(ACCESS_TOKEN_COOKIE, accessToken, {
       httpOnly: true,
       secure: this.appConfig.isProduction ? true : false,
       sameSite: "lax",
@@ -59,5 +69,12 @@ export class AuthController {
     });
 
     return user;
+  }
+
+  @UseGuards(AccessTokenGuard)
+  @Get("me")
+  me(@Req() request: AuthenticatedRequest): { userId: number } {
+    const userId: number = request.userId;
+    return { userId };
   }
 }
