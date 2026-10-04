@@ -24,3 +24,10 @@ Thumbs.db
 
 .idea/
 *.swp
+
+# Prisma installs these into packages/db on generate. Not project source.
+# The repo-root AGENTS.md is ours and stays tracked.
+packages/db/.agents/
+packages/db/.claude/
+packages/db/.windsurf/
+packages/db/skills-lock.json

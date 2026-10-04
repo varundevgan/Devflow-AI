@@ -13,6 +13,8 @@ export const envSchema = z.object({
   API_PORT: z.coerce.number().int().min(1).max(65535).default(4000),
 
   DATABASE_URL: z.url(),
+
+  ACCESS_TOKEN_SECRET: z.string().min(32),
 });
 
 export type Env = z.infer<typeof envSchema>;

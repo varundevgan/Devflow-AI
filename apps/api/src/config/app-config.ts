@@ -13,11 +13,13 @@ export class AppConfig {
   readonly nodeEnv: Env["NODE_ENV"];
   readonly port: number;
   readonly databaseUrl: string;
+  readonly accessTokenSecret: string;
 
   constructor(env: Env) {
     this.nodeEnv = env.NODE_ENV;
     this.port = env.API_PORT;
     this.databaseUrl = env.DATABASE_URL;
+    this.accessTokenSecret = env.ACCESS_TOKEN_SECRET;
 
     // Configuration is read-only for the process lifetime. Freezing turns an
     // accidental write into an immediate error instead of a confusing one later.

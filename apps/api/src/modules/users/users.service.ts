@@ -1,4 +1,4 @@
-import { argon2, randomBytes, timingSafeEqual } from "node:crypto";
+import { argon2, createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 
 import { PrismaService } from "@/infra/prisma/prisma.service";
 import { Prisma } from "@devflow/db";
@@ -21,6 +21,8 @@ const ARGON2_TAG_LENGTH = 32;
 const DUMMY_PASSWORD_HASH =
   "$argon2id$v=19$m=19456,t=2,p=1$qgXCIahcGNT20KGCNv2o/Q$dlfK0vIVvU8Ouxk6uBkuML5EGmDuZ15Nsvq11ELNKTY";
 
+export const REFRESH_TOKEN_30_DAYS_EXPIRE = 30 * 24 * 60 * 60 * 1000;
+
 export interface RegisterUserInput {
   name: string;
   email: string;
@@ -41,6 +43,11 @@ export interface LoginUserInput {
 }
 
 export interface LoginUser {
+  user: User;
+  refreshToken: string;
+}
+
+export interface User {
   id: string;
   email: string;
   name: string;
@@ -124,14 +131,35 @@ export class UserService {
     if (user === null || !passwordMatches) {
       throw new UnauthorizedException("Invalid email or password");
     }
+    const rawToken = await this.generateRefreshToken(user.id);
 
     return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      },
+      refreshToken: rawToken,
     };
+  }
+
+  private async generateRefreshToken(userId: string): Promise<string> {
+    const rawToken = randomBytes(32).toString("hex");
+
+    const tokenHash = createHash("sha256").update(rawToken).digest("hex");
+
+    await this.prisma.refreshToken.create({
+      data: {
+        familyId: randomUUID(),
+        tokenHash,
+        expiresAt: new Date(Date.now() + REFRESH_TOKEN_30_DAYS_EXPIRE),
+        userId,
+      },
+    });
+
+    return rawToken;
   }
 }
 

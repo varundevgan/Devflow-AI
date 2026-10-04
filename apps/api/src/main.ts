@@ -2,6 +2,7 @@ import { NestFactory } from "@nestjs/core";
 
 import { AppModule } from "./app.module";
 import { AppConfig } from "./config/app-config";
+import cookieParser from "cookie-parser";
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
@@ -12,6 +13,7 @@ async function bootstrap(): Promise<void> {
   const config = app.get(AppConfig);
 
   app.enableShutdownHooks();
+  app.use(cookieParser());
   await app.listen(config.port);
 
   console.warn(`API listening on http://localhost:${config.port} [${config.nodeEnv}]`);
