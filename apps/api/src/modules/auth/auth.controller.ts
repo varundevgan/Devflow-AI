@@ -73,8 +73,7 @@ export class AuthController {
 
   @UseGuards(AccessTokenGuard)
   @Get("me")
-  me(@Req() request: AuthenticatedRequest): { userId: number } {
-    const userId: number = request.userId;
-    return { userId };
+  me(@Req() request: AuthenticatedRequest): { userId: string } {
+    return { userId: request.userId };
   }
 }

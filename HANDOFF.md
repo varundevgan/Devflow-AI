@@ -4,8 +4,7 @@
 PostgreSQL counts. Three migrations are applied: `init_users`, `add_user_password_hash`,
 and `add_refresh_token`. `users` has 1 row (`ada@example.com`). `refresh_tokens` has 1
 row, inserted by that login. Parent of the cookie commit is `c64959a`. `@devflow/api`
-typecheck passed 4 October 2026. `pnpm-workspace.yaml` still has an uncommitted unused
-`bcrypt` entry under `onlyBuiltDependencies`. Do not install `bcrypt`.
+typecheck passed 4 October 2026. `bcrypt` is not a dependency. Do not install it.
 Where this document and the code disagree, **the code is right and this document is
 stale** — fix the document.
 
@@ -48,7 +47,8 @@ above are the story.
 (section 5). Sprints, engineering analytics and MCP are documented as future work.
 Currently at **Milestone 2**. Register and login work locally. Login inserts a
 refresh-token row and sets httpOnly `refresh_token` and `access_token` cookies.
-`verifyAccessToken` exists and is not wired to a route. No rotation yet. See section 4.
+`AccessTokenGuard` calls `verifyAccessToken` on `GET /auth/me` and sets `userId` on
+that request. No rotation yet. See section 4.
 
 ---
 
@@ -208,9 +208,8 @@ not contain a single line of business logic.
   `timingSafeEqual`. An unknown email and a wrong password both return 401
   `Invalid email or password`. The unknown-email path still runs Argon2, against a dummy
   hash, so it does not return faster.
-- `bcrypt` is not an API dependency. The committed `pnpm-workspace.yaml` does not list
-  it. The working tree adds it under `onlyBuiltDependencies`, with a comment. That
-  entry is unused. Do not install `bcrypt`.
+- `bcrypt` is not an API dependency and is not listed in `pnpm-workspace.yaml`.
+  Do not install `bcrypt`.
 
 **Implemented and verified 4 Oct 2026** against the running API (`POST /auth/login`,
 201). The JSON body was the public user fields. Two `Set-Cookie` headers came back:
@@ -229,14 +228,13 @@ not contain a single line of business logic.
 - `verifyAccessToken` recomputes HMAC-SHA256 before reading JSON, rejects a bad
   signature, a non-object header, `alg` other than `HS256`, a missing or non-string
   `sub`, and a missing, non-numeric, or expired `exp`. It returns `{ userId }` or
-  throws `Error("Invalid access token")`. No guard calls it yet.
+  throws `InvalidAccessTokenError`. `AccessTokenGuard` on `GET /auth/me` calls it
+  and answers 401 for a missing cookie or that error. Other throws stay 500s.
 
 Nest's `@Post` default still makes a successful login **201**.
 
 **Not built yet.** The design below is still the target for what remains:
 
-- A guard that reads the `access_token` cookie, calls `verifyAccessToken`, and attaches
-  `userId` to the request. Do not trust a decoded payload that skipped the signature check.
 - Opaque **refresh token** rotation on every use, with **family-based reuse detection**.
   Replaying an already-rotated token revokes the entire family. A new login keeps
   generating a new `familyId`. Copy `familyId` only inside rotation.
@@ -307,7 +305,7 @@ Each of these was argued, not assumed. Do not silently reverse one.
 
 ## 4. Current repository state
 
-**Verified by inspection on 2 Oct 2026** (schema, migration folder, git, live PostgreSQL). Everything below is fact, not intent. Milestone 1 is on `main`, including CI that typechecks `@devflow/web`. Register, login, and the refresh-token migration are also on `main` at `c64959a`, matching `origin/main`. `user-password-hash` points at that same commit. Typecheck was not re-run this session.
+**Verified by inspection on 4 Oct 2026** (schema, migration folder, git, live PostgreSQL, typecheck). Everything below is fact, not intent. Milestone 1 is on `main`, including CI that typechecks `@devflow/web`. `main` and `origin/main` are `e43ed98` (httpOnly access and refresh cookies). Its parent is `c64959a` (Argon2id register and login, plus the refresh-token migration). `user-password-hash` and `origin/user-password-hash` still point at `c64959a`. `@devflow/api` and `@devflow/db` typecheck passed this session. `@devflow/contracts` was not re-run.
 
 ### Toolchain actually installed
 
@@ -353,6 +351,7 @@ apps/api/                       ✅ RUNS
                                 POST /auth/register, POST /auth/login
                                 register.schema.ts, login.schema.ts
                                 access.token.ts: sign and verify the access JWT
+                                access-token.guard.ts: AccessTokenGuard on GET /auth/me
   src/common/                   EMPTY
   test/                         EMPTY
 
@@ -385,9 +384,9 @@ docs/setup.md
 
 ### Database state (verified by querying it)
 
-Re-queried 2 October 2026: `\dt`, `\d refresh_tokens`, `_prisma_migrations`,
+Re-queried 4 October 2026: `\dt`, `pg_extension`, `_prisma_migrations`,
 `count(*)` from `users` and `refresh_tokens`, and the single user's email.
-Server version, role attributes, extensions, and `pg_available_extensions` were
+Server version, role attributes, `citext`, and `pg_available_extensions` were
 **not** re-checked this session.
 
 - PostgreSQL **18.3** running as a Windows service on `localhost:5432`. (version not re-checked)
@@ -405,8 +404,8 @@ Server version, role attributes, extensions, and `pg_available_extensions` were
   `correct-horse`. Registering that email again returns 409.
 - `refresh_tokens`: `token_hash` text unique, `user_id` uuid FK to `users(id)`
   `ON DELETE CASCADE`, `family_id` uuid not null, `expires_at` not null, `revoked_at`
-  nullable, indexes on `family_id` and `user_id`. **0 rows.** No application code writes
-  this table yet.
+  nullable, indexes on `family_id` and `user_id`. **1 row**, inserted by login.
+  Nothing rotates or revokes a token.
 - Installed extensions: `plpgsql` only. **`citext` is NOT installed.** (not re-checked)
 - **`vector` is NOT AVAILABLE** in `pg_available_extensions` — pgvector is not bundled
   with the Windows installer and building it natively is unpleasant. (not re-checked)
@@ -430,8 +429,8 @@ contains variables that code actually reads.** `PrismaService` reads `DATABASE_U
 - Configuration: Zod-validated, fails fast, typed `AppConfig` injected via DI, real env
   vars override `.env`. Verified: invalid `API_PORT` exits 1 before binding a port.
 - Prisma installed, configured for v7, client generates successfully.
-- `@devflow/api` typecheck passed 4 Oct 2026. `@devflow/db` and `@devflow/contracts`
-  were not re-run this session.
+- `@devflow/api` and `@devflow/db` typecheck passed 4 Oct 2026. `@devflow/contracts`
+  was not re-run this session.
 - `POST /auth/register` and `POST /auth/login`. Register returns the user without
   `passwordHash`. Login, verified 4 Oct 2026, returns 201 with the same public fields
   and sets `access_token` and `refresh_token`. Unknown email and wrong password return
@@ -443,18 +442,18 @@ contains variables that code actually reads.** `PrismaService` reads `DATABASE_U
   applied on local PostgreSQL and committed on `main` at `c64959a`.
 - `refresh_tokens` matches the reuse-detection model (`token_hash`, `family_id`,
   nullable `revoked_at`). Login inserts a row. Nothing rotates or revokes a token.
-  `verifyAccessToken` is not used by a guard.
+  `AccessTokenGuard` calls `verifyAccessToken` for `GET /auth/me`. Typecheck passed
+  4 Oct 2026. The route was not called against a running API this session.
 - `docker-compose.yml` exists but has never been run.
 
 **Missing entirely**
 - ESLint runtime, any test framework, any test.
-- An auth guard on the access cookie, refresh-token rotation, and family reuse detection.
+- Refresh-token rotation and family reuse detection.
 
 ### ⚠️ Known issues and unresolved items
 
 1. **Milestone 2 is in progress.** Register, login, and both cookies are implemented.
-   The open increment is a guard that calls `verifyAccessToken` (section 10). Rotation
-   is the increment after that.
+   `GET /auth/me` is guarded. The open increment is refresh-token rotation (section 10).
    `GET /health/ready` still returns `{status:"ok"}` when `SELECT 1` succeeds. The
    readiness failure path was not exercised against a stopped Postgres. Milestone 1,
    including web typecheck in CI, is on `main` at `bdd866e`.
@@ -472,8 +471,8 @@ contains variables that code actually reads.** `PrismaService` reads `DATABASE_U
    `eslint.config.mjs`.
 
 5. **Git is initialized and pushed.** Public repo: https://github.com/varundevgan/Devflow-AI
-   Checked out branch is `main`, tracking `origin/main` at `c64959a`. `user-password-hash`
-   and `origin/user-password-hash` point at the same commit. Initial commit is
+   Checked out branch is `main`, tracking `origin/main` at `e43ed98`. `user-password-hash`
+   and `origin/user-password-hash` point at `c64959a`. Initial commit is
    `175b9e7`. `.env` is gitignored.
 
 6. **`node_modules` contains leftovers** from the accidental Prisma 8 RC install
@@ -532,9 +531,8 @@ contains variables that code actually reads.** `PrismaService` reads `DATABASE_U
 ### In progress
 
 - **Milestone 2, authentication.** Register, login, the refresh cookie, and the
-  access cookie are implemented. `verifyAccessToken` is not attached to a route.
-  Next increment: a guard that reads `access_token` and sets `userId` from
-  `verifyAccessToken`. Do not put `organizationId` on the refresh-token table. Do not
+  access cookie are implemented. `GET /auth/me` reads `userId` from `AccessTokenGuard`.
+  Next increment: refresh-token rotation. Do not put `organizationId` on the refresh-token table. Do not
   return either token in the JSON body. Rotation copies `familyId`. A new login
   generates a new one.
 
@@ -623,7 +621,10 @@ test passes.
 4. REVIEW      inspect his code critically (section 8)
 5. EXPLAIN     what is wrong and WHY — not just what to change
 6. HINT        let him attempt the fix himself
-7. SOLVE       only if he is genuinely stuck after attempting
+7. SOLVE       behavior: only if he is genuinely stuck after attempting.
+               craft: if the behavior is right and the code is below
+               production quality, edit it and explain every change.
+               The full rule is in [`AGENTS.md`](AGENTS.md), "Production pass".
 8. VERIFY      run the build / typecheck / tests yourself. Investigate failures
                yourself. Explain them. Never hide an error.
 9. SUMMARISE   what he implemented, what he learned, which decisions mattered,
@@ -758,13 +759,11 @@ missing tenant filter is not the same class of problem as an awkward variable na
 
 4. **Identify the next increment.** Register, login, both cookies, and
    `verifyAccessToken` already exist. Passwords are Node `crypto.argon2` (`argon2id`),
-   not bcrypt. Do not add a hashing package. The next increment is a guard on a route
-   that needs a caller: read the `access_token` cookie, call `verifyAccessToken` with
-   `AppConfig.accessTokenSecret`, and expose `userId` to the handler. A missing or
-   invalid token is 401. Do not decode the payload without the signature check. Do not
-   put roles in the token. Explain that increment and give one small task. Do not
-   start it by writing the guard. Rotation and family reuse detection come after.
+   not bcrypt. Do not add a hashing package. `GET /auth/me` and `AccessTokenGuard`
+   exist. The next increment is refresh-token rotation with family reuse detection.
    Copy `familyId` only inside rotation. A new login keeps generating a new one.
+   Do not put roles in the access token. Explain that increment and give one small
+   task. Do not start it by writing the rotation.
 
 5. **Explain that increment to the user** using the section 7 workflow — what, why,
    architecture, files, concepts — and then **give him a small task and stop.**

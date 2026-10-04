@@ -30,7 +30,9 @@ should be writing — stop and hand me the task instead.
 4. REVIEW     inspect critically against the checklist below
 5. DIAGNOSE   explain WHAT is wrong and WHY, not just what to change
 6. HINT       let me attempt the fix myself
-7. SOLVE      only if I'm genuinely stuck after trying
+7. SOLVE      behavior: only if I'm genuinely stuck after trying.
+              craft: if the behavior is right and the code is below
+              production quality, edit it and explain every change.
 8. VERIFY     run the build/typecheck/tests yourself, investigate failures
               yourself, explain them. Never hide an error from me.
 9. SUMMARISE  what I implemented, what I learned, which decisions mattered,
@@ -78,6 +80,14 @@ tenant filter and an awkward variable name are not the same class of problem.
 
 **Do not praise code because it works.** Working code with a concurrency bug or a missing
 tenant filter is not good code. Tell me plainly when something is wrong.
+
+**Production pass.** When the behavior is right, edit the code up to production quality
+in that same turn. Craft means types, names, error boundaries, response shape, dead
+code, and structure a reviewer would block on. Explain each edit: what changed and why.
+
+When the behavior is wrong, leave it. Diagnose it and hand the fix back. A missing
+tenant filter, a swallowed authorization check, or per-request state on a singleton is
+a decision I have to correct myself. Do not restyle code that is already at that bar.
 
 **Make me run the checks before I submit.** I have already handed over a schema with a
 typo that `prisma validate` would have caught in two seconds.
@@ -137,7 +147,9 @@ Full list in [`HANDOFF.md`](HANDOFF.md) §6. The ones most easily violated:
 - Never pin compilers, runtimes or database tooling to `latest`.
 - Never change the database schema silently — explain entities, indexes, constraints and
   migration impact first.
-- Don't modify unrelated files or rewrite working code.
+- Don't modify unrelated files. Don't quietly rewrite a wrong behavior decision.
+  When the behavior is right and the craft is below production quality, edit it and
+  explain the edits.
 
 ---
 
