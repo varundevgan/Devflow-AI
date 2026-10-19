@@ -27,6 +27,7 @@ model User {
   updatedAt     DateTime      @updatedAt @map("updated_at")
 
   refreshTokens RefreshToken[]
+  organizations OrganizationMember[]
 
   @@map("users")
 }
@@ -46,4 +47,39 @@ model RefreshToken {
   @@index([familyId])
   @@index([userId])
   @@map("refresh_tokens")
+}
+
+model Organization {
+  id                   String                @id @default(uuid(7)) @db.Uuid
+  name                 String                
+  organizationMembers  OrganizationMember[]  
+  createdAt            DateTime              @default(now()) @map("created_at")
+  updatedAt            DateTime              @updatedAt @map("updated_at")
+
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id                  String          @id @default(uuid(7)) @db.Uuid
+  organizationId      String          @db.Uuid @map("organization_id")
+  userId              String          @db.Uuid @map("user_id")
+  role                Role
+  createdAt            DateTime       @default(now()) @map("created_at")
+  updatedAt            DateTime       @updatedAt @map("updated_at")
+
+  user                User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization        Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+
+  @@map("organization_members")
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  DEVELOPER
+  VIEWER
 }

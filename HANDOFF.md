@@ -1,10 +1,13 @@
 # DevFlow AI — Agent Handoff
 
-**Last verified:** 4 October 2026, against the repository, git, a live login, and
-PostgreSQL counts. Three migrations are applied: `init_users`, `add_user_password_hash`,
-and `add_refresh_token`. `users` has 1 row (`ada@example.com`). `refresh_tokens` has 1
-row, inserted by that login. Parent of the cookie commit is `c64959a`. `@devflow/api`
-typecheck passed 4 October 2026. `bcrypt` is not a dependency. Do not install it.
+**Last verified:** 5 October 2026, against the repository, git, and PostgreSQL
+counts. Three migrations are applied: `init_users`, `add_user_password_hash`,
+and `add_refresh_token`. `users` has 2 rows and `refresh_tokens` has 2 rows.
+Emails were not re-queried. The checked-out branch is `access-token-guard` at
+`3f9a756`, which adds `AccessTokenGuard` and `GET /auth/me`. That branch is not
+merged. `main` and `origin/main` are still `e43ed98`. Parent of the cookie commit
+is `c64959a`. `@devflow/api` and `@devflow/db` typecheck passed 5 October 2026.
+`bcrypt` is not a dependency. Do not install it.
 Where this document and the code disagree, **the code is right and this document is
 stale** — fix the document.
 
@@ -305,7 +308,7 @@ Each of these was argued, not assumed. Do not silently reverse one.
 
 ## 4. Current repository state
 
-**Verified by inspection on 4 Oct 2026** (schema, migration folder, git, live PostgreSQL, typecheck). Everything below is fact, not intent. Milestone 1 is on `main`, including CI that typechecks `@devflow/web`. `main` and `origin/main` are `e43ed98` (httpOnly access and refresh cookies). Its parent is `c64959a` (Argon2id register and login, plus the refresh-token migration). `user-password-hash` and `origin/user-password-hash` still point at `c64959a`. `@devflow/api` and `@devflow/db` typecheck passed this session. `@devflow/contracts` was not re-run.
+**Verified by inspection on 5 Oct 2026** (schema, migration folder, git, live PostgreSQL counts, typecheck). Everything below is fact, not intent. Milestone 1 is on `main`, including CI that typechecks `@devflow/web`. `main` and `origin/main` are `e43ed98` (httpOnly access and refresh cookies). Its parent is `c64959a` (Argon2id register and login, plus the refresh-token migration). The working branch is `access-token-guard` at `3f9a756` (`d645990` then `3f9a756`), tracking `origin/access-token-guard`, working tree clean. Those two commits are not on `main`. `user-password-hash` and `origin/user-password-hash` still point at `c64959a`. A local branch `demo-failing-typecheck` points at `c204582`. `@devflow/api` and `@devflow/db` typecheck passed this session. `@devflow/contracts` was not re-run. Node is 25.1.0, pnpm is 10.33.2, TypeScript is 6.0.3.
 
 ### Toolchain actually installed
 
@@ -352,6 +355,8 @@ apps/api/                       ✅ RUNS
                                 register.schema.ts, login.schema.ts
                                 access.token.ts: sign and verify the access JWT
                                 access-token.guard.ts: AccessTokenGuard on GET /auth/me
+                                POST /auth/refresh: rotation, reuse detection, grace window
+  src/modules/organizations/    POST /orgs: org + OWNER membership (one nested create)
   src/common/                   EMPTY
   test/                         EMPTY
 
@@ -384,28 +389,36 @@ docs/setup.md
 
 ### Database state (verified by querying it)
 
-Re-queried 4 October 2026: `\dt`, `pg_extension`, `_prisma_migrations`,
-`count(*)` from `users` and `refresh_tokens`, and the single user's email.
-Server version, role attributes, `citext`, and `pg_available_extensions` were
-**not** re-checked this session.
+Re-queried 5 October 2026: `\dt`, `pg_extension`, `_prisma_migrations`, and
+`count(*)` from `users` and `refresh_tokens`. Emails, server version, role
+attributes, `citext`, and `pg_available_extensions` were **not** re-checked.
+Installed extensions are still `plpgsql` only.
 
 - PostgreSQL **18.3** running as a Windows service on `localhost:5432`. (version not re-checked)
 - Role `devflow` exists: `CREATEDB = true`, `SUPERUSER = false`. (CREATEDB is needed for
   Prisma's *shadow database* during `migrate dev`; production uses `migrate deploy`,
   which does not need it. Role attributes not re-checked.)
 - Database `devflow` exists. Connected as `devflow` on `localhost`.
-- Tables: `_prisma_migrations`, `users`, and `refresh_tokens`. Applied migrations:
+- Tables (re-queried 15 Oct 2026): `_prisma_migrations`, `users`, `refresh_tokens`,
+  `organizations`, and `organization_members`. Applied migrations:
   `20260926061922_init_users` (26 Sep 2026),
-  `20260927111954_add_user_password_hash` (27 Sep 2026, 16:49), and
-  `20261002104809_add_refresh_token` (2 Oct 2026, 16:18).
-- `users.password_hash` is `text NOT NULL` with no default. **1 row.** This session
-  confirmed the count only. The earlier check the same day recorded `ada@example.com` /
+  `20260927111954_add_user_password_hash` (27 Sep 2026, 16:49),
+  `20261002104809_add_refresh_token` (2 Oct 2026, 16:18), and
+  `20261014153041_add_organizations` (14 Oct 2026, 21:00).
+- **Run `pnpm --filter @devflow/db generate` after every migration.** On 15 Oct 2026 the
+  migration had been applied but the generated client was still from 2 Oct, so
+  `prisma.organization` and `prisma.organizationMember` did not exist in TypeScript.
+  Regenerating fixed it.
+- `users.password_hash` is `text NOT NULL` with no default. **2 rows** on 5 Oct 2026.
+  Emails were not re-queried. The 4 Oct check recorded `ada@example.com` /
   `Ada Lovelace`, inserted by a local register call. Password used then was
   `correct-horse`. Registering that email again returns 409.
 - `refresh_tokens`: `token_hash` text unique, `user_id` uuid FK to `users(id)`
   `ON DELETE CASCADE`, `family_id` uuid not null, `expires_at` not null, `revoked_at`
-  nullable, indexes on `family_id` and `user_id`. **1 row**, inserted by login.
-  Nothing rotates or revokes a token.
+  nullable, indexes on `family_id` and `user_id`. A 6 Oct 2026 probe of
+  `POST /auth/refresh` rotated a live token: the presented row was revoked, the
+  successor copied `family_id`, and replaying the old cookie returned 401
+  without revoking the successor.
 - Installed extensions: `plpgsql` only. **`citext` is NOT installed.** (not re-checked)
 - **`vector` is NOT AVAILABLE** in `pg_available_extensions` — pgvector is not bundled
   with the Windows installer and building it natively is unpleasant. (not re-checked)
@@ -441,19 +454,20 @@ contains variables that code actually reads.** `PrismaService` reads `DATABASE_U
 - `20260927111954_add_user_password_hash` and `20261002104809_add_refresh_token` are
   applied on local PostgreSQL and committed on `main` at `c64959a`.
 - `refresh_tokens` matches the reuse-detection model (`token_hash`, `family_id`,
-  nullable `revoked_at`). Login inserts a row. Nothing rotates or revokes a token.
-  `AccessTokenGuard` calls `verifyAccessToken` for `GET /auth/me`. Typecheck passed
-  4 Oct 2026. The route was not called against a running API this session.
+  nullable `revoked_at`). Login inserts a row. Happy-path rotation revokes the
+  presented row and inserts a successor with the same `family_id`. Replaying an
+  already-rotated token returns 401 and leaves the rest of the family alone.
+  `AccessTokenGuard` calls `verifyAccessToken` for `GET /auth/me`.
 - `docker-compose.yml` exists but has never been run.
 
 **Missing entirely**
 - ESLint runtime, any test framework, any test.
-- Refresh-token rotation and family reuse detection.
 
 ### ⚠️ Known issues and unresolved items
 
-1. **Milestone 2 is in progress.** Register, login, and both cookies are implemented.
-   `GET /auth/me` is guarded. The open increment is refresh-token rotation (section 10).
+1. **Milestone 2 auth is written, including refresh rotation.** `GET /auth/me` is
+   guarded. `POST /auth/refresh` rotates, detects family reuse, and allows a
+   10-second grace window.
    `GET /health/ready` still returns `{status:"ok"}` when `SELECT 1` succeeds. The
    readiness failure path was not exercised against a stopped Postgres. Milestone 1,
    including web typecheck in CI, is on `main` at `bdd866e`.
@@ -471,9 +485,10 @@ contains variables that code actually reads.** `PrismaService` reads `DATABASE_U
    `eslint.config.mjs`.
 
 5. **Git is initialized and pushed.** Public repo: https://github.com/varundevgan/Devflow-AI
-   Checked out branch is `main`, tracking `origin/main` at `e43ed98`. `user-password-hash`
-   and `origin/user-password-hash` point at `c64959a`. Initial commit is
-   `175b9e7`. `.env` is gitignored.
+   Checked out branch on 5 Oct 2026 is `access-token-guard` at `3f9a756`, tracking
+   `origin/access-token-guard`. `main` and `origin/main` are `e43ed98`.
+   `user-password-hash` and `origin/user-password-hash` point at `c64959a`.
+   Initial commit is `175b9e7`. `.env` is gitignored.
 
 6. **`node_modules` contains leftovers** from the accidental Prisma 8 RC install
    (`@alchemy.run/cloudflare-runtime` and similar, with paths deep enough to break
@@ -530,11 +545,17 @@ contains variables that code actually reads.** `PrismaService` reads `DATABASE_U
 
 ### In progress
 
-- **Milestone 2, authentication.** Register, login, the refresh cookie, and the
-  access cookie are implemented. `GET /auth/me` reads `userId` from `AccessTokenGuard`.
-  Next increment: refresh-token rotation. Do not put `organizationId` on the refresh-token table. Do not
+- **Milestone 2, authentication.** Register, login, both cookies, `GET /auth/me`,
+  refresh rotation, family reuse detection, and the 10-second grace window are
+  implemented. Do not put `organizationId` on the refresh-token table. Do not
   return either token in the JSON body. Rotation copies `familyId`. A new login
   generates a new one.
+- **Milestone 3.** Migration `20261014153041_add_organizations` is applied.
+  `POST /orgs` creates the organization and the creator's OWNER membership in
+  one nested write. The name is trimmed and capped at 100 characters. The
+  client does not send a role or an organization id. One membership per user
+  per organization stays a database constraint. `organizationId` stays off
+  `refresh_tokens`. Next slice: `MembershipService` and an org guard.
 
 ### Remaining
 
@@ -757,13 +778,14 @@ missing tenant filter is not the same class of problem as an awkward variable na
 3. **Report any discrepancy** between this document and what you find, and update this
    file. Treat the code as the source of truth.
 
-4. **Identify the next increment.** Register, login, both cookies, and
-   `verifyAccessToken` already exist. Passwords are Node `crypto.argon2` (`argon2id`),
-   not bcrypt. Do not add a hashing package. `GET /auth/me` and `AccessTokenGuard`
-   exist. The next increment is refresh-token rotation with family reuse detection.
-   Copy `familyId` only inside rotation. A new login keeps generating a new one.
-   Do not put roles in the access token. Explain that increment and give one small
-   task. Do not start it by writing the rotation.
+4. **Identify the next increment.** Milestone 2 auth is written: register, login,
+   both cookies, `GET /auth/me`, `POST /auth/refresh` with rotation, family reuse
+   detection, and a 10-second grace window. All of it is still uncommitted on
+   `access-token-guard` as of 15 Oct 2026. Passwords are Node `crypto.argon2`, not
+   bcrypt. `POST /orgs` (Milestone 3, first slice) creates an organization plus the
+   creator's OWNER membership; verified against the running API 15 Oct 2026. The
+   next increment is `MembershipService` + an org guard for `/orgs/:orgId/...`
+   (missing membership → 404). Explain it and give one small task.
 
 5. **Explain that increment to the user** using the section 7 workflow — what, why,
    architecture, files, concepts — and then **give him a small task and stop.**
