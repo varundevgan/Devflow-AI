@@ -23,6 +23,14 @@ const DUMMY_PASSWORD_HASH =
 
 export const REFRESH_TOKEN_30_DAYS_EXPIRE = 30 * 24 * 60 * 60 * 1000;
 
+// Long enough for two in-flight refreshes of the same cookie. A stolen token
+// replayed inside this window leaves the attacker's successor alive.
+export const REFRESH_TOKEN_GRACE_WINDOW = 10 * 1000;
+
+// One message for a missing cookie, an unknown token, expiry, a revoked
+// token, and a lost race. Distinct text would tell an attacker which case it was.
+export const INVALID_REFRESH_TOKEN_MESSAGE = "Invalid refresh token";
+
 export interface RegisterUserInput {
   name: string;
   email: string;
@@ -147,8 +155,7 @@ export class UserService {
 
   private async generateRefreshToken(userId: string): Promise<string> {
     const rawToken = randomBytes(32).toString("hex");
-
-    const tokenHash = createHash("sha256").update(rawToken).digest("hex");
+    const tokenHash = hashRefreshToken(rawToken);
 
     await this.prisma.refreshToken.create({
       data: {
@@ -161,6 +168,84 @@ export class UserService {
 
     return rawToken;
   }
+
+  async rotateRefreshToken(rawToken: string): Promise<{ refreshToken: string; userId: string }> {
+    const tokenHash = hashRefreshToken(rawToken);
+    const token = await this.prisma.refreshToken.findUnique({
+      where: { tokenHash },
+    });
+
+    if (token === null) {
+      throw new UnauthorizedException(INVALID_REFRESH_TOKEN_MESSAGE);
+    }
+
+    if (token.revokedAt) {
+      const now = Date.now();
+      const revokedDate = token.revokedAt.getTime();
+
+      if (now - revokedDate <= REFRESH_TOKEN_GRACE_WINDOW) {
+        throw new UnauthorizedException(INVALID_REFRESH_TOKEN_MESSAGE);
+      }
+
+      await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`
+          SELECT pg_advisory_xact_lock(hashtextextended(${token.familyId}, 0))
+        `;
+        await tx.refreshToken.updateMany({
+          where: {
+            familyId: token.familyId,
+            revokedAt: null,
+          },
+          data: {
+            revokedAt: new Date(),
+          },
+        });
+      });
+
+      throw new UnauthorizedException(INVALID_REFRESH_TOKEN_MESSAGE);
+    }
+
+    // A token we already read as revoked is handled above and never reaches this
+    // update. Here the row was live at read time. The update matches it only
+    // while it is still unrevoked and unexpired, and one `now` is both the
+    // comparison and the revoke stamp. If another request revoked it first,
+    // count is not 1: 401, no insert, and the family is left alone.
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        SELECT pg_advisory_xact_lock(hashtextextended(${token.familyId}, 0))
+      `;
+      const now = new Date();
+      const revoked = await tx.refreshToken.updateMany({
+        where: {
+          tokenHash,
+          revokedAt: null,
+          expiresAt: { gt: now },
+        },
+        data: { revokedAt: now },
+      });
+      if (revoked.count !== 1) {
+        throw new UnauthorizedException(INVALID_REFRESH_TOKEN_MESSAGE);
+      }
+
+      const refreshToken = randomBytes(32).toString("hex");
+      await tx.refreshToken.create({
+        data: {
+          familyId: token.familyId,
+          userId: token.userId,
+          tokenHash: hashRefreshToken(refreshToken),
+          expiresAt: new Date(now.getTime() + REFRESH_TOKEN_30_DAYS_EXPIRE),
+        },
+      });
+
+      return { refreshToken, userId: token.userId };
+    });
+  }
+}
+
+// ---------------------- Helper functions---------------------------------------
+
+function hashRefreshToken(rawToken: string): string {
+  return createHash("sha256").update(rawToken).digest("hex");
 }
 
 function hashPassword(password: string): Promise<string> {
