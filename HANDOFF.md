@@ -1,13 +1,12 @@
 # DevFlow AI — Agent Handoff
 
-**Last verified:** 5 October 2026, against the repository, git, and PostgreSQL
-counts. Three migrations are applied: `init_users`, `add_user_password_hash`,
-and `add_refresh_token`. `users` has 2 rows and `refresh_tokens` has 2 rows.
-Emails were not re-queried. The checked-out branch is `access-token-guard` at
-`3f9a756`, which adds `AccessTokenGuard` and `GET /auth/me`. That branch is not
-merged. `main` and `origin/main` are still `e43ed98`. Parent of the cookie commit
-is `c64959a`. `@devflow/api` and `@devflow/db` typecheck passed 5 October 2026.
-`bcrypt` is not a dependency. Do not install it.
+**Last verified:** 6 November 2026, against the project routes. Branch
+`projects` is based on `access-token-guard` at `aa8d0fe`. It adds membership
+checks, `DELETE /orgs/:orgId`, the organization isolation test, and project
+create, list, and get. Migration `20261028025052_add_projects` is applied.
+Do not rewrite those routes. `bcrypt` is not a dependency. Do not install it.
+There is no Jest or Vitest. Do not add one. The next task is the `Issue`
+model in section 10.
 Where this document and the code disagree, **the code is right and this document is
 stale** — fix the document.
 
@@ -48,10 +47,10 @@ above are the story.
 
 **Current scope.** Narrowed from an original 36-phase plan to **15 milestones**
 (section 5). Sprints, engineering analytics and MCP are documented as future work.
-Currently at **Milestone 2**. Register and login work locally. Login inserts a
-refresh-token row and sets httpOnly `refresh_token` and `access_token` cookies.
-`AccessTokenGuard` calls `verifyAccessToken` on `GET /auth/me` and sets `userId` on
-that request. No rotation yet. See section 4.
+Currently at the start of **Milestone 4**. Register, login, refresh rotation,
+organizations, membership, `can()`, and the organization isolation test are
+written. The test passed locally on 26 October 2026. The next increment is
+the `Project` model in section 10. See section 4.
 
 ---
 
@@ -236,7 +235,7 @@ not contain a single line of business logic.
 
 Nest's `@Post` default still makes a successful login **201**.
 
-**Not built yet.** The design below is still the target for what remains:
+**Refresh rotation is committed** in `59a4f35`. Do not rebuild it. The design below is what that commit implements:
 
 - Opaque **refresh token** rotation on every use, with **family-based reuse detection**.
   Replaying an already-rotated token revokes the entire family. A new login keeps
@@ -308,7 +307,7 @@ Each of these was argued, not assumed. Do not silently reverse one.
 
 ## 4. Current repository state
 
-**Verified by inspection on 5 Oct 2026** (schema, migration folder, git, live PostgreSQL counts, typecheck). Everything below is fact, not intent. Milestone 1 is on `main`, including CI that typechecks `@devflow/web`. `main` and `origin/main` are `e43ed98` (httpOnly access and refresh cookies). Its parent is `c64959a` (Argon2id register and login, plus the refresh-token migration). The working branch is `access-token-guard` at `3f9a756` (`d645990` then `3f9a756`), tracking `origin/access-token-guard`, working tree clean. Those two commits are not on `main`. `user-password-hash` and `origin/user-password-hash` still point at `c64959a`. A local branch `demo-failing-typecheck` points at `c204582`. `@devflow/api` and `@devflow/db` typecheck passed this session. `@devflow/contracts` was not re-run. Node is 25.1.0, pnpm is 10.33.2, TypeScript is 6.0.3.
+**Verified by inspection on 25 Oct 2026** (git and toolchain only). Database row counts, `main`, and typecheck were not re-checked this turn. The working branch is `access-token-guard` at `aa8d0fe`. Parents include `32a1a55` (create an organization and its owner membership) and `59a4f35` (refresh rotation). The working tree is dirty: `HANDOFF.md`, the organization controller/module/service, plus untracked `can.ts`, `membership.service.ts`, `org-member.guard.ts`, and `permission.guard.ts`. There is no file under `apps/api/test`. Node is 25.1.0, pnpm is 10.33.2, TypeScript is 6.0.3. Older SHA notes below this paragraph were not re-checked.
 
 ### Toolchain actually installed
 
@@ -340,9 +339,10 @@ turbo.json                      task graph
 .npmrc .editorconfig .gitignore .prettierrc.json .prettierignore
 
 apps/api/                       ✅ RUNS
-  package.json  tsconfig.json  nest-cli.json
+  package.json  tsconfig.json  tsconfig.build.json  nest-cli.json
   src/main.ts                   bootstrap, cookie-parser, reads port from AppConfig
-  src/app.module.ts             composition root: Config, Health, Prisma, User, Auth
+  src/app.module.ts             composition root: Config, Health, Prisma, User, Auth,
+                                Organization
   src/config/env.schema.ts      Zod schema: NODE_ENV, API_PORT, DATABASE_URL, ACCESS_TOKEN_SECRET
   src/config/load-env.ts        upward .env search + validation, throws on invalid
   src/config/app-config.ts      typed frozen config class, own DI token
@@ -356,9 +356,14 @@ apps/api/                       ✅ RUNS
                                 access.token.ts: sign and verify the access JWT
                                 access-token.guard.ts: AccessTokenGuard on GET /auth/me
                                 POST /auth/refresh: rotation, reuse detection, grace window
-  src/modules/organizations/    POST /orgs: org + OWNER membership (one nested create)
-  src/common/                   EMPTY
-  test/                         EMPTY
+  src/common/can.ts             pure can(role, action, resource). Uncommitted
+  src/modules/organizations/    POST /orgs, GET /orgs/:orgId, DELETE /orgs/:orgId
+                                MembershipService, OrgMemberGuard, PermissionGuard
+                                Uncommitted on top of aa8d0fe. Behavior was checked
+                                against a running API on 25 Oct 2026: member GET 200,
+                                owner DELETE 204, repeat DELETE 404, non-member 404,
+                                no cookie 401, viewer DELETE 403
+  test/                         EMPTY. Next file is organization-isolation.test.ts
 
 apps/web/                       ✅ Next.js 16.3.6 shell, exact pins with React 19.3.0
   next.config.ts                agentRules: false
@@ -461,7 +466,8 @@ contains variables that code actually reads.** `PrismaService` reads `DATABASE_U
 - `docker-compose.yml` exists but has never been run.
 
 **Missing entirely**
-- ESLint runtime, any test framework, any test.
+- ESLint runtime.
+- Any test. Node's built-in `node:test` is the runner. Do not add Jest or Vitest.
 
 ### ⚠️ Known issues and unresolved items
 
@@ -485,10 +491,9 @@ contains variables that code actually reads.** `PrismaService` reads `DATABASE_U
    `eslint.config.mjs`.
 
 5. **Git is initialized and pushed.** Public repo: https://github.com/varundevgan/Devflow-AI
-   Checked out branch on 5 Oct 2026 is `access-token-guard` at `3f9a756`, tracking
-   `origin/access-token-guard`. `main` and `origin/main` are `e43ed98`.
-   `user-password-hash` and `origin/user-password-hash` point at `c64959a`.
-   Initial commit is `175b9e7`. `.env` is gitignored.
+   Checked out branch on 25 Oct 2026 is `access-token-guard` at `aa8d0fe`. The
+   working tree is dirty (see section 4). `main`, `user-password-hash`, and the
+   initial commit were not re-checked this turn. `.env` is gitignored.
 
 6. **`node_modules` contains leftovers** from the accidental Prisma 8 RC install
    (`@alchemy.run/cloudflare-runtime` and similar, with paths deep enough to break
@@ -550,12 +555,16 @@ contains variables that code actually reads.** `PrismaService` reads `DATABASE_U
   implemented. Do not put `organizationId` on the refresh-token table. Do not
   return either token in the JSON body. Rotation copies `familyId`. A new login
   generates a new one.
-- **Milestone 3.** Migration `20261014153041_add_organizations` is applied.
-  `POST /orgs` creates the organization and the creator's OWNER membership in
-  one nested write. The name is trimmed and capped at 100 characters. The
-  client does not send a role or an organization id. One membership per user
-  per organization stays a database constraint. `organizationId` stays off
-  `refresh_tokens`. Next slice: `MembershipService` and an org guard.
+- **Milestone 3.** Organizations, membership, and the permission check are
+  written and uncommitted. `POST /orgs` creates the organization and the
+  creator's OWNER membership. The name is trimmed and capped at 100 characters.
+  `GET /orgs/:orgId` requires membership (missing → 404) and
+  `can(role, "read", "organization")`. `DELETE /orgs/:orgId` requires
+  `can(role, "delete", "organization")` (owner only) and returns 204.
+  A missing role or a missing `@RequirePermission` is a plain `Error` (500).
+  A member who fails `can()` gets 403. `organizationId` stays off
+  `refresh_tokens`. The isolation test passed locally on 26 October 2026.
+  **Next task: the `Project` model in section 10. Do not rebuild this slice.**
 
 ### Remaining
 
@@ -778,14 +787,45 @@ missing tenant filter is not the same class of problem as an awkward variable na
 3. **Report any discrepancy** between this document and what you find, and update this
    file. Treat the code as the source of truth.
 
-4. **Identify the next increment.** Milestone 2 auth is written: register, login,
-   both cookies, `GET /auth/me`, `POST /auth/refresh` with rotation, family reuse
-   detection, and a 10-second grace window. All of it is still uncommitted on
-   `access-token-guard` as of 15 Oct 2026. Passwords are Node `crypto.argon2`, not
-   bcrypt. `POST /orgs` (Milestone 3, first slice) creates an organization plus the
-   creator's OWNER membership; verified against the running API 15 Oct 2026. The
-   next increment is `MembershipService` + an org guard for `/orgs/:orgId/...`
-   (missing membership → 404). Explain it and give one small task.
+4. **Identify the next increment.** Project create, list, and get exist.
+   Get is `findFirst` on `id`, `organizationId` from the guard, and
+   `deletedAt: null`, and a miss throws `NotFoundException("Not found")`.
+   Do not rewrite those routes. The next task is the `Issue` model only
+   in `packages/db/prisma/schema.prisma`. He does not run `migrate`.
+   `organizationId` is required on the row. `number` is allocated later
+   from `Project.issueCounter` inside the insert transaction.
+   `@@unique([projectId, number])` is the backstop. No route in this
+   increment. After he submits, ask why the counter update and the issue
+   insert have to commit or roll back together.
+
+   On 25 Oct 2026, `node --experimental-strip-types` loaded `app.module.ts` and
+   failed on `@Module`. Node strips types and does not understand Nest
+   decorators, so the test must not import the app. It calls a running API
+   with `fetch`. `Headers.prototype.getSetCookie` exists on Node 25.1.0.
+
+   **His task, and only this task.** He writes
+   `apps/api/test/organization-isolation.test.ts`. He starts the API with
+   `pnpm --filter @devflow/api dev`, then runs
+   `node --test apps/api/test/organization-isolation.test.ts`.
+   Nest compiles with `tsconfig.build.json` (`rootDir` `src` only).
+   `tsconfig.json` typechecks `src` and `test` with `rootDir` `.`.
+   Do not put the test back under `rootDir` `src`: that is TS6059 and
+   `nest start` will not boot. Do not set `"type": "module"` on
+   `@devflow/api` to silence the module-type warning. The API emits
+   CommonJS.
+
+   The test registers two users. Each email contains `randomUUID()` so a second
+   run does not 409. Passwords are at least 8 characters. Each user logs in.
+   `fetch` does not store cookies. Keep Alice's `getSetCookie()` value and
+   Bob's in two different variables, and send each back on the `Cookie` header.
+   Alice creates an organization. Bob's GET and Bob's DELETE of that id both
+   return 404. Alice's GET of the same id returns 200, and her DELETE returns
+   204. Assert the status codes. Bob must not get 403.
+
+   The test uses the dev database. Alice's DELETE removes the organization.
+   The two user rows stay. A separate test database waits until this suite has
+   more than one file. That test has been submitted and passed. Bob's 404 is
+   the missing-membership result. A member who fails `can()` still gets 403.
 
 5. **Explain that increment to the user** using the section 7 workflow — what, why,
    architecture, files, concepts — and then **give him a small task and stop.**

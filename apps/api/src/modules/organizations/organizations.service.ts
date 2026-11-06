@@ -1,7 +1,7 @@
 import { Role } from "@devflow/db";
 
 import { PrismaService } from "@/infra/prisma/prisma.service";
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { ORGANIZATION_NAME_MAX_LENGTH } from "./create-organization.schema";
 
 export interface CreateOrganizationInput {
@@ -15,6 +15,10 @@ export interface CreatedOrganization {
   createdAt: Date;
   updatedAt: Date;
   role: Role;
+}
+
+export interface DeleteOrganization {
+  organizationId: string;
 }
 
 @Injectable()
@@ -58,5 +62,17 @@ export class OrganizationService {
       updatedAt: organization.updatedAt,
       role: membership.role,
     };
+  }
+
+  async deleteOrganization(input: DeleteOrganization): Promise<void> {
+    const deleted = await this.prisma.organization.deleteMany({
+      where: {
+        id: input.organizationId,
+      },
+    });
+
+    if (deleted.count === 0) {
+      throw new NotFoundException("Not found");
+    }
   }
 }

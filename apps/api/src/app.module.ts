@@ -6,12 +6,21 @@ import { PrismaModule } from "./infra/prisma/prisma.module";
 import { UserModule } from "./modules/users/users.module";
 import { AuthModule } from "./modules/auth/auth.module";
 import { OrganizationModule } from "./modules/organizations/organizations.module";
+import { ProjectsModule } from "./modules/projects/projects.module";
 
 /**
  * Composition root. This module wires the application together and holds no
  * logic of its own; every capability arrives as an imported module.
  */
 @Module({
-  imports: [ConfigModule, HealthModule, PrismaModule, UserModule, AuthModule, OrganizationModule],
+  imports: [
+    ConfigModule,
+    HealthModule,
+    PrismaModule,
+    UserModule,
+    AuthModule,
+    OrganizationModule,
+    ProjectsModule,
+  ],
 })
 export class AppModule {}
