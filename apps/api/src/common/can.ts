@@ -3,11 +3,13 @@ import { Role } from "@devflow/db";
 export type ActionType = {
   organization: "read" | "update" | "delete";
   project: "read" | "update" | "delete" | "create";
+  issue: "create" | "read" | "update" | "delete";
 };
 
 export type ResourceType = {
   organization: "organization";
   project: "project";
+  issue: "issue";
 };
 
 const minPermissions: {
@@ -23,6 +25,12 @@ const minPermissions: {
     update: Role.ADMIN,
     delete: Role.OWNER,
     create: Role.OWNER,
+  },
+  issue: {
+    create: Role.DEVELOPER,
+    read: Role.VIEWER,
+    update: Role.DEVELOPER,
+    delete: Role.DEVELOPER,
   },
 };
 
