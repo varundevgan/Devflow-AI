@@ -28,6 +28,7 @@ model User {
 
   refreshTokens RefreshToken[]
   organizations OrganizationMember[]
+  comments      Comment[]
 
   @@map("users")
 }
@@ -54,6 +55,10 @@ model Organization {
   name                 String                
   organizationMembers  OrganizationMember[]  
   projects             Project[]
+  issues               Issue[]
+  comments             Comment[]
+
+
   createdAt            DateTime              @default(now()) @map("created_at")
   updatedAt            DateTime              @updatedAt @map("updated_at")
 
@@ -91,6 +96,8 @@ model Project {
   key               String
   organizationId    String            @db.Uuid @map("organization_id")
   issueCounter      Int               @default(0) @map("issue_counter")
+  issues            Issue[]
+
   deletedAt         DateTime?         @map("deleted_at")
   createdAt         DateTime          @default(now()) @map("created_at")
   updatedAt         DateTime          @updatedAt @map("updated_at")
@@ -100,4 +107,44 @@ model Project {
 
   @@unique([organizationId, key])
   @@map("projects")
+}
+
+model Issue {
+  id                String            @id @default(uuid(7)) @db.Uuid
+  title             String
+  number            Int               
+  projectId         String            @db.Uuid @map("project_id")
+  organizationId    String            @db.Uuid @map("organization_id")
+  comments          Comment[]
+
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+
+
+  project           Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+
+  @@unique([projectId, number])
+  @@index([organizationId])
+  @@map("issues")
+}
+
+model Comment {
+  id                String            @id @default(uuid(7)) @db.Uuid
+  body              String
+  authorId          String?           @db.Uuid @map("author_id")
+  issueId           String            @db.Uuid @map("issue_id")
+  organizationId    String            @db.Uuid @map("organization_id")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  deletedAt         DateTime?         @map("deleted_at")
+
+  issue             Issue             @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  author            User?              @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([issueId])
+  @@map("comments")
 }

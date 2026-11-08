@@ -7,6 +7,7 @@ import { UserModule } from "./modules/users/users.module";
 import { AuthModule } from "./modules/auth/auth.module";
 import { OrganizationModule } from "./modules/organizations/organizations.module";
 import { ProjectsModule } from "./modules/projects/projects.module";
+import { IssuesModule } from "./modules/issues/issues.module";
 
 /**
  * Composition root. This module wires the application together and holds no
@@ -21,6 +22,7 @@ import { ProjectsModule } from "./modules/projects/projects.module";
     AuthModule,
     OrganizationModule,
     ProjectsModule,
+    IssuesModule,
   ],
 })
 export class AppModule {}

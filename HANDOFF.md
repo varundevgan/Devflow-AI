@@ -1,12 +1,17 @@
 # DevFlow AI — Agent Handoff
 
-**Last verified:** 6 November 2026, against the project routes. Branch
-`projects` is based on `access-token-guard` at `aa8d0fe`. It adds membership
+**Last verified:** 8 November 2026, against git, a running API, and create-issue.
+Branch `projects` is at `bea8b8d` (pushed). That commit has membership
 checks, `DELETE /orgs/:orgId`, the organization isolation test, and project
-create, list, and get. Migration `20261028025052_add_projects` is applied.
-Do not rewrite those routes. `bcrypt` is not a dependency. Do not install it.
-There is no Jest or Vitest. Do not add one. The next task is the `Issue`
-model in section 10.
+create, list, and get. Uncommitted on top: the `Issue` model in
+`schema.prisma`, migration `20261108022429_add_issues` (applied locally),
+and `POST /orgs/:orgId/projects/:projectId/issues`. Do not rewrite the
+project routes, the issue table, or issue create. `bcrypt` is not a
+dependency. Do not install it. There is no Jest or Vitest. Do not add one.
+Issue create, list, get-one, title update, and delete are done.
+The `Comment` model is reviewed. `author_id` is `UUID` and `ON DELETE SET NULL`.
+It is not migrated. Next step is `pnpm --filter @devflow/db migrate`.
+No comment route yet.
 Where this document and the code disagree, **the code is right and this document is
 stale** — fix the document.
 
@@ -47,10 +52,10 @@ above are the story.
 
 **Current scope.** Narrowed from an original 36-phase plan to **15 milestones**
 (section 5). Sprints, engineering analytics and MCP are documented as future work.
-Currently at the start of **Milestone 4**. Register, login, refresh rotation,
-organizations, membership, `can()`, and the organization isolation test are
-written. The test passed locally on 26 October 2026. The next increment is
-the `Project` model in section 10. See section 4.
+Currently in **Milestone 4**. Register, login, refresh rotation,
+organizations, membership, `can()`, the organization isolation test, and
+project create, list, and get are written. The `issues` table is migrated.
+Issue create, list, get-one, title update, and delete are implemented. The `Comment` model is reviewed and not migrated. See section 10.
 
 ---
 
@@ -307,7 +312,7 @@ Each of these was argued, not assumed. Do not silently reverse one.
 
 ## 4. Current repository state
 
-**Verified by inspection on 25 Oct 2026** (git and toolchain only). Database row counts, `main`, and typecheck were not re-checked this turn. The working branch is `access-token-guard` at `aa8d0fe`. Parents include `32a1a55` (create an organization and its owner membership) and `59a4f35` (refresh rotation). The working tree is dirty: `HANDOFF.md`, the organization controller/module/service, plus untracked `can.ts`, `membership.service.ts`, `org-member.guard.ts`, and `permission.guard.ts`. There is no file under `apps/api/test`. Node is 25.1.0, pnpm is 10.33.2, TypeScript is 6.0.3. Older SHA notes below this paragraph were not re-checked.
+**Verified by inspection on 8 Nov 2026** (git and the `issues` table). Row counts were not re-queried. The working branch is `projects` at `bea8b8d`, tracking `origin/projects`. Uncommitted on top of that commit: `packages/db/prisma/schema.prisma` and `packages/db/prisma/migrations/20261108022429_add_issues`. `HANDOFF.md` is dirty once this paragraph is saved. Node, pnpm, and TypeScript were not re-checked this turn; the last check was Node 25.1.0, pnpm 10.33.2, TypeScript 6.0.3. Older SHA notes below this paragraph were not re-checked.
 
 ### Toolchain actually installed
 
@@ -376,10 +381,14 @@ apps/worker/README.md           ⛔ README only, intentionally no package.json
 packages/db/                    ✅ typechecks
   package.json                  prisma 7.10.0, @prisma/client, adapter-pg, pg, dotenv-cli
   prisma.config.ts              Prisma 7 config: schema path, migrations path, datasource url
-  prisma/schema.prisma          User (passwordHash) and RefreshToken
+  prisma/schema.prisma          User, RefreshToken, Organization, OrganizationMember,
+                                Project, Issue. Issue is uncommitted on `projects`.
   prisma/migrations/            20260926061922_init_users
                                 20260927111954_add_user_password_hash
                                 20261002104809_add_refresh_token (applied, committed)
+                                20261014153041_add_organizations (applied)
+                                20261028025052_add_projects (applied; committed on `projects`)
+                                20261108022429_add_issues (applied locally, not committed)
   src/index.ts                  re-exports @prisma/client
 packages/contracts/             ✅ typechecks, but src/index.ts is `export {}` — empty
 packages/eslint-config/         package.json + base.js. ESLint is NOT INSTALLED anywhere
@@ -556,7 +565,7 @@ contains variables that code actually reads.** `PrismaService` reads `DATABASE_U
   return either token in the JSON body. Rotation copies `familyId`. A new login
   generates a new one.
 - **Milestone 3.** Organizations, membership, and the permission check are
-  written and uncommitted. `POST /orgs` creates the organization and the
+  on `projects` at `bea8b8d`. `POST /orgs` creates the organization and the
   creator's OWNER membership. The name is trimmed and capped at 100 characters.
   `GET /orgs/:orgId` requires membership (missing → 404) and
   `can(role, "read", "organization")`. `DELETE /orgs/:orgId` requires
@@ -564,7 +573,29 @@ contains variables that code actually reads.** `PrismaService` reads `DATABASE_U
   A missing role or a missing `@RequirePermission` is a plain `Error` (500).
   A member who fails `can()` gets 403. `organizationId` stays off
   `refresh_tokens`. The isolation test passed locally on 26 October 2026.
-  **Next task: the `Project` model in section 10. Do not rebuild this slice.**
+  Do not rebuild this slice.
+- **Milestone 4.** Project create, list, and get are on `bea8b8d`.
+  Create requires `OWNER`. List and get require `can(role, "read", "project")`,
+  which is `VIEWER`. List filters `organizationId` from the guard and
+  `deletedAt: null`, orders by `createdAt` desc, and takes 100. Get is
+  `findFirst` on `id`, that `organizationId`, and `deletedAt: null`. A miss
+  throws `NotFoundException("Not found")`. The `issues` table is migration
+  `20261108022429_add_issues`, applied locally and not committed. `number`
+  has no default. `@@unique([projectId, number])` and
+  `@@index([organizationId])` are in the migration. Both foreign keys
+  cascade. Issue create is implemented in `apps/api/src/modules/issues/`
+  and registered on `AppModule`. `can(role, "create", "issue")` is
+  `DEVELOPER`, in the service and on `PermissionGuard`. The body is
+  `title` only (trim, 1–200). `organizationId` comes from
+  `OrgMemberGuard`. `projectId` comes from `@Param`. Inside
+  `prisma.$transaction`, `updateManyAndReturn` increments
+  `issueCounter` where `id`, that `organizationId`, and
+  `deletedAt: null`, and the returned counter is the issue `number`.
+  A miss throws `NotFoundException("Not found")`. Probed 8 Nov 2026
+  against `localhost:4000`: numbers 1 then 2, project counter 2, a
+  project id from another org returned 404 and left that project's
+  counter at 0, a missing project returned 404, a blank title returned
+  400, and a missing cookie returned 401. **Do not rebuild this slice.**
 
 ### Remaining
 
@@ -787,16 +818,12 @@ missing tenant filter is not the same class of problem as an awkward variable na
 3. **Report any discrepancy** between this document and what you find, and update this
    file. Treat the code as the source of truth.
 
-4. **Identify the next increment.** Project create, list, and get exist.
-   Get is `findFirst` on `id`, `organizationId` from the guard, and
-   `deletedAt: null`, and a miss throws `NotFoundException("Not found")`.
-   Do not rewrite those routes. The next task is the `Issue` model only
-   in `packages/db/prisma/schema.prisma`. He does not run `migrate`.
-   `organizationId` is required on the row. `number` is allocated later
-   from `Project.issueCounter` inside the insert transaction.
-   `@@unique([projectId, number])` is the backstop. No route in this
-   increment. After he submits, ask why the counter update and the issue
-   insert have to commit or roll back together.
+4. **Identify the next increment.** The `Comment` model is reviewed
+   and not migrated. Do not rewrite it. When Varun asks what the step
+   is, he runs `pnpm --filter @devflow/db migrate` with the name
+   `add_comments`, then `pnpm --filter @devflow/db generate`. No
+   comment route in that step. `authorId` must stay `@db.Uuid`
+   `@map("author_id")`.
 
    On 25 Oct 2026, `node --experimental-strip-types` loaded `app.module.ts` and
    failed on `@Module`. Node strips types and does not understand Nest
