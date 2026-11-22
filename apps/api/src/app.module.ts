@@ -8,6 +8,8 @@ import { AuthModule } from "./modules/auth/auth.module";
 import { OrganizationModule } from "./modules/organizations/organizations.module";
 import { ProjectsModule } from "./modules/projects/projects.module";
 import { IssuesModule } from "./modules/issues/issues.module";
+import { CommentsModule } from "./modules/comments/comments.module";
+import { LabelsModule } from "./modules/labels/labels.module";
 
 /**
  * Composition root. This module wires the application together and holds no
@@ -23,6 +25,8 @@ import { IssuesModule } from "./modules/issues/issues.module";
     OrganizationModule,
     ProjectsModule,
     IssuesModule,
+    CommentsModule,
+    LabelsModule,
   ],
 })
 export class AppModule {}

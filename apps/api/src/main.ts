@@ -14,6 +14,13 @@ async function bootstrap(): Promise<void> {
 
   app.enableShutdownHooks();
   app.use(cookieParser());
+  // Browsers reject Access-Control-Allow-Origin: * when the request sends cookies.
+  // cors@2.8.6 writes this exact string into that header. It does not copy the
+  // request's Origin, so a different site still receives an origin that is not its own.
+  app.enableCors({
+    origin: config.corsOrigin,
+    credentials: true,
+  });
   await app.listen(config.port);
 
   console.warn(`API listening on http://localhost:${config.port} [${config.nodeEnv}]`);
