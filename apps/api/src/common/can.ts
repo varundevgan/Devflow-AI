@@ -4,12 +4,16 @@ export type ActionType = {
   organization: "read" | "update" | "delete";
   project: "read" | "update" | "delete" | "create";
   issue: "create" | "read" | "update" | "delete";
+  comment: "create" | "read" | "delete" | "update";
+  label: "create" | "read" | "apply" | "remove" | "update" | "delete";
 };
 
 export type ResourceType = {
   organization: "organization";
   project: "project";
   issue: "issue";
+  comment: "comment";
+  label: "label";
 };
 
 const minPermissions: {
@@ -31,6 +35,20 @@ const minPermissions: {
     read: Role.VIEWER,
     update: Role.DEVELOPER,
     delete: Role.DEVELOPER,
+  },
+  comment: {
+    create: Role.VIEWER,
+    read: Role.VIEWER,
+    delete: Role.VIEWER,
+    update: Role.VIEWER,
+  },
+  label: {
+    create: Role.DEVELOPER,
+    read: Role.VIEWER,
+    apply: Role.DEVELOPER,
+    remove: Role.DEVELOPER,
+    update: Role.DEVELOPER,
+    delete: Role.ADMIN,
   },
 };
 

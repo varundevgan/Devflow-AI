@@ -1,17 +1,17 @@
 # DevFlow AI — Agent Handoff
 
-**Last verified:** 8 November 2026, against git, a running API, and create-issue.
-Branch `projects` is at `bea8b8d` (pushed). That commit has membership
-checks, `DELETE /orgs/:orgId`, the organization isolation test, and project
-create, list, and get. Uncommitted on top: the `Issue` model in
-`schema.prisma`, migration `20261108022429_add_issues` (applied locally),
-and `POST /orgs/:orgId/projects/:projectId/issues`. Do not rewrite the
-project routes, the issue table, or issue create. `bcrypt` is not a
-dependency. Do not install it. There is no Jest or Vitest. Do not add one.
-Issue create, list, get-one, title update, and delete are done.
-The `Comment` model is reviewed. `author_id` is `UUID` and `ON DELETE SET NULL`.
-It is not migrated. Next step is `pnpm --filter @devflow/db migrate`.
-No comment route yet.
+**Last verified:** 22 November 2026. Branch `comments` is `e92e487`,
+same as `main` and `origin/main`. Still uncommitted: comments,
+labels, both label migrations, CORS, `/login`, and the issue page.
+`@devflow/web` typecheck passed. The issue page shows `number` and
+`title`, lists comments, and posts a comment onto that list. Probed
+in the browser the same day: an empty issue gained `Posted from the
+issue page` and the textarea cleared; an issue that already had two
+comments showed the new one last; a blank submit showed `Enter a
+comment` and left the list alone. A reload returned the new row.
+The next increment is listing the labels on that issue. Do not
+rewrite the issue GET, the comment routes, or the label routes.
+Section 10.
 Where this document and the code disagree, **the code is right and this document is
 stale** — fix the document.
 
@@ -52,10 +52,22 @@ above are the story.
 
 **Current scope.** Narrowed from an original 36-phase plan to **15 milestones**
 (section 5). Sprints, engineering analytics and MCP are documented as future work.
-Currently in **Milestone 4**. Register, login, refresh rotation,
-organizations, membership, `can()`, the organization isolation test, and
-project create, list, and get are written. The `issues` table is migrated.
-Issue create, list, get-one, title update, and delete are implemented. The `Comment` model is reviewed and not migrated. See section 10.
+Currently in **Milestone 5**. Register, login, refresh rotation,
+organizations, membership, `can()`, the organization isolation test,
+project create, list, and get, and issue create, list, get, title
+update, and delete are on `main` at `e92e487`. The `comments` table is
+migrated. Comment create is implemented on branch `comments` and is not
+committed yet. Comment list, soft-delete, and author edit are
+implemented. Labels migration `20261111014730_add_labels` is applied.
+Attach-label is written, typechecks, and was probed 16 November
+2026. Listing labels on one issue is implemented and was probed
+16 November 2026: empty 200 `[]`, names ascending as `{ id, name }`,
+viewer GET 200, viewer POST 403, other-project issue 404, no cookie
+401, non-member 404. Detach-label is implemented.
+`DELETE .../labels/:labelId` returns 204. `can()` has `label`
+`remove` at `DEVELOPER`. `@devflow/api` typecheck passed
+21 November 2026. It has not been probed. Do not rewrite it.
+See section 10.
 
 ---
 
@@ -312,7 +324,7 @@ Each of these was argued, not assumed. Do not silently reverse one.
 
 ## 4. Current repository state
 
-**Verified by inspection on 8 Nov 2026** (git and the `issues` table). Row counts were not re-queried. The working branch is `projects` at `bea8b8d`, tracking `origin/projects`. Uncommitted on top of that commit: `packages/db/prisma/schema.prisma` and `packages/db/prisma/migrations/20261108022429_add_issues`. `HANDOFF.md` is dirty once this paragraph is saved. Node, pnpm, and TypeScript were not re-checked this turn; the last check was Node 25.1.0, pnpm 10.33.2, TypeScript 6.0.3. Older SHA notes below this paragraph were not re-checked.
+**Verified by inspection on 8 Nov 2026** (git and `prisma migrate status`). Row counts were not re-queried. `main` and `origin/main` are at `e92e487`. The working branch is `comments` at that same commit, with no upstream. `prisma migrate status` reported 7 migrations and "Database schema is up to date." `HANDOFF.md` is dirty once this paragraph is saved. Node, pnpm, and TypeScript were not re-checked this turn; the last check was Node 25.1.0, pnpm 10.33.2, TypeScript 6.0.3. Older SHA notes below this paragraph were not re-checked.
 
 ### Toolchain actually installed
 
@@ -345,10 +357,11 @@ turbo.json                      task graph
 
 apps/api/                       ✅ RUNS
   package.json  tsconfig.json  tsconfig.build.json  nest-cli.json
-  src/main.ts                   bootstrap, cookie-parser, reads port from AppConfig
+  src/main.ts                   bootstrap, cookie-parser, CORS, reads port from AppConfig
   src/app.module.ts             composition root: Config, Health, Prisma, User, Auth,
                                 Organization
-  src/config/env.schema.ts      Zod schema: NODE_ENV, API_PORT, DATABASE_URL, ACCESS_TOKEN_SECRET
+  src/config/env.schema.ts      Zod schema: NODE_ENV, API_PORT, DATABASE_URL, ACCESS_TOKEN_SECRET,
+                                CORS_ORIGIN (an origin, no path)
   src/config/load-env.ts        upward .env search + validation, throws on invalid
   src/config/app-config.ts      typed frozen config class, own DI token
   src/config/config.module.ts   @Global
@@ -361,14 +374,28 @@ apps/api/                       ✅ RUNS
                                 access.token.ts: sign and verify the access JWT
                                 access-token.guard.ts: AccessTokenGuard on GET /auth/me
                                 POST /auth/refresh: rotation, reuse detection, grace window
-  src/common/can.ts             pure can(role, action, resource). Uncommitted
+  src/common/can.ts             pure can(role, action, resource). Committed.
+                                organization, project, issue, and comment.
+                                Comment `create`, `read`, `update`, and
+                                `delete` are `VIEWER`. Update and delete
+                                mean "a comment they authored."
   src/modules/organizations/    POST /orgs, GET /orgs/:orgId, DELETE /orgs/:orgId
                                 MembershipService, OrgMemberGuard, PermissionGuard
-                                Uncommitted on top of aa8d0fe. Behavior was checked
-                                against a running API on 25 Oct 2026: member GET 200,
-                                owner DELETE 204, repeat DELETE 404, non-member 404,
-                                no cookie 401, viewer DELETE 403
-  test/                         EMPTY. Next file is organization-isolation.test.ts
+                                On main. Behavior was checked against a running API
+                                on 25 Oct 2026: member GET 200, owner DELETE 204,
+                                repeat DELETE 404, non-member 404, no cookie 401,
+                                viewer DELETE 403
+  src/modules/projects/         POST/GET /orgs/:orgId/projects, GET one project
+  src/modules/issues/           POST, GET list, GET one, PATCH title, DELETE.
+                                On main in 196fb87. Probed 8 Nov 2026.
+                                IssuesModule exports IssuesService.
+  src/modules/comments/         POST, GET, PATCH, and DELETE
+                                .../comments/:commentId. Uncommitted.
+                                Edit probed 9 Nov 2026: PATCH returns the
+                                updated row, body trimmed, authorId
+                                unchanged, deletedAt stays null. Service
+                                calls can(role, "update", "comment").
+  test/                         organization-isolation.test.ts. Not empty.
 
 apps/web/                       ✅ Next.js 16.3.6 shell, exact pins with React 19.3.0
   next.config.ts                agentRules: false
@@ -382,13 +409,14 @@ packages/db/                    ✅ typechecks
   package.json                  prisma 7.10.0, @prisma/client, adapter-pg, pg, dotenv-cli
   prisma.config.ts              Prisma 7 config: schema path, migrations path, datasource url
   prisma/schema.prisma          User, RefreshToken, Organization, OrganizationMember,
-                                Project, Issue. Issue is uncommitted on `projects`.
+                                Project, Issue, Comment. Committed on main.
   prisma/migrations/            20260926061922_init_users
                                 20260927111954_add_user_password_hash
                                 20261002104809_add_refresh_token (applied, committed)
                                 20261014153041_add_organizations (applied)
-                                20261028025052_add_projects (applied; committed on `projects`)
-                                20261108022429_add_issues (applied locally, not committed)
+                                20261028025052_add_projects (applied)
+                                20261108022429_add_issues (applied, committed)
+                                20261108153321_add_comments (applied, committed)
   src/index.ts                  re-exports @prisma/client
 packages/contracts/             ✅ typechecks, but src/index.ts is `export {}` — empty
 packages/eslint-config/         package.json + base.js. ESLint is NOT INSTALLED anywhere
@@ -442,11 +470,22 @@ Installed extensions are still `plpgsql` only.
 Single root `.env`, copied from `.env.example`, holding `NODE_ENV`, `DATABASE_URL`,
 `REDIS_URL`, `API_PORT`, `CORS_ORIGIN`, `NEXT_PUBLIC_API_URL`.
 
-`NODE_ENV`, `API_PORT`, and `DATABASE_URL` are in the Zod schema. **The schema only
-contains variables that code actually reads.** `PrismaService` reads `DATABASE_URL`.
-`CORS_ORIGIN` joins when the browser calls us; `REDIS_URL` at milestone 6.
+`NODE_ENV`, `API_PORT`, `DATABASE_URL`, `ACCESS_TOKEN_SECRET`, and `CORS_ORIGIN`
+are in the Zod schema. **The schema only contains variables that code actually
+reads.** `PrismaService` reads `DATABASE_URL`. `main.ts` reads `CORS_ORIGIN` and
+   passes it to `enableCors` with `credentials: true`. Probed 21 November
+   2026 against `localhost:4000`: preflight and `GET /health` from
+   `Origin: http://localhost:3000` returned
+   `Access-Control-Allow-Origin: http://localhost:3000` and
+   `Access-Control-Allow-Credentials: true`. A different `Origin`
+   still received the configured origin, which the browser rejects.
+   `REDIS_URL` joins at milestone 6.
 
 `packages/db` reads `DATABASE_URL` via `dotenv -e ../../.env` in its package scripts.
+`apps/web/next.config.ts` walks upward from `process.cwd()` and calls
+`process.loadEnvFile` on the root `.env`. Client code may read
+`process.env.NEXT_PUBLIC_API_URL` only. The other variables in that file
+stay on the server.
 
 ### What is implemented / partial / missing
 
@@ -500,9 +539,9 @@ contains variables that code actually reads.** `PrismaService` reads `DATABASE_U
    `eslint.config.mjs`.
 
 5. **Git is initialized and pushed.** Public repo: https://github.com/varundevgan/Devflow-AI
-   Checked out branch on 25 Oct 2026 is `access-token-guard` at `aa8d0fe`. The
-   working tree is dirty (see section 4). `main`, `user-password-hash`, and the
-   initial commit were not re-checked this turn. `.env` is gitignored.
+   Checked out branch on 8 Nov 2026 is `comments` at `e92e487`, the same
+   commit as `origin/main`. `comments` has no upstream. `projects` is
+   `196fb87` and tracks `origin/projects`. `.env` is gitignored.
 
 6. **`node_modules` contains leftovers** from the accidental Prisma 8 RC install
    (`@alchemy.run/cloudflare-runtime` and similar, with paths deep enough to break
@@ -565,7 +604,7 @@ contains variables that code actually reads.** `PrismaService` reads `DATABASE_U
   return either token in the JSON body. Rotation copies `familyId`. A new login
   generates a new one.
 - **Milestone 3.** Organizations, membership, and the permission check are
-  on `projects` at `bea8b8d`. `POST /orgs` creates the organization and the
+  on `main` at `e92e487`. `POST /orgs` creates the organization and the
   creator's OWNER membership. The name is trimmed and capped at 100 characters.
   `GET /orgs/:orgId` requires membership (missing → 404) and
   `can(role, "read", "organization")`. `DELETE /orgs/:orgId` requires
@@ -574,13 +613,13 @@ contains variables that code actually reads.** `PrismaService` reads `DATABASE_U
   A member who fails `can()` gets 403. `organizationId` stays off
   `refresh_tokens`. The isolation test passed locally on 26 October 2026.
   Do not rebuild this slice.
-- **Milestone 4.** Project create, list, and get are on `bea8b8d`.
+- **Milestone 4.** Project create, list, and get are on `main`.
   Create requires `OWNER`. List and get require `can(role, "read", "project")`,
   which is `VIEWER`. List filters `organizationId` from the guard and
   `deletedAt: null`, orders by `createdAt` desc, and takes 100. Get is
   `findFirst` on `id`, that `organizationId`, and `deletedAt: null`. A miss
   throws `NotFoundException("Not found")`. The `issues` table is migration
-  `20261108022429_add_issues`, applied locally and not committed. `number`
+  `20261108022429_add_issues`, applied and committed. `number`
   has no default. `@@unique([projectId, number])` and
   `@@index([organizationId])` are in the migration. Both foreign keys
   cascade. Issue create is implemented in `apps/api/src/modules/issues/`
@@ -595,7 +634,31 @@ contains variables that code actually reads.** `PrismaService` reads `DATABASE_U
   against `localhost:4000`: numbers 1 then 2, project counter 2, a
   project id from another org returned 404 and left that project's
   counter at 0, a missing project returned 404, a blank title returned
-  400, and a missing cookie returned 401. **Do not rebuild this slice.**
+  400, and a missing cookie returned 401. List returns numbers
+  descending, take 100, and 200 `[]` for a live project with no issues.
+  Get-one is `GET .../issues/:issueId`. The `where` requires `id`,
+  `projectId`, `organizationId`, and a live project in that organization.
+  An issue from another project in the same org is 404. Title update is
+  `PATCH` with the same `where` and sets `title` only. A body field named
+  `projectId` is ignored. Delete is `DELETE` with that `where`,
+  `@HttpCode(HttpStatus.NO_CONTENT)` (204), and does not decrement
+  `issueCounter`. `can()` minima: issue `create`, `update`, and `delete`
+  are `DEVELOPER`; issue `read` is `VIEWER`. **Do not rebuild this slice.**
+- **Milestone 5.** The `comments` table is migration
+  `20261108153321_add_comments`, applied and committed. `body` is required
+  text. `organizationId` and `issueId` cascade. `authorId` is optional
+  `uuid`, `ON DELETE SET NULL`. `deletedAt` is nullable. Indexes on
+  `organizationId` and `issueId`. Create, list, soft-delete, and author
+  edit are implemented. Labels migration `20261111014730_add_labels`
+  is applied. Label create and list are implemented. **Do not rewrite
+  them.** Migration `20261115015526_issue_label_composite_fkey` is
+  applied. Attach-label is implemented, typechecks, and was probed
+  16 November 2026. Do not rewrite it. Listing the labels on one
+  issue is implemented and was probed the same day. Detach-label is
+  implemented: `DELETE .../issues/:issueId/labels/:labelId`, 204,
+  `can(role, "remove", "label")` at `DEVELOPER`. Typecheck passed
+  21 November 2026. It has not been probed. Do not rewrite it.
+  Section 10.
 
 ### Remaining
 
@@ -690,6 +753,10 @@ test passes.
                yourself. Explain them. Never hide an error.
 9. SUMMARISE   what he implemented, what he learned, which decisions mattered,
                what he should be able to explain in an interview
+10. PUSH?      when it is a good time to push, say so, and say whether the
+               push stays on this branch or needs a new one. Do not commit
+               or push unless he asks. The rule is in [`AGENTS.md`](AGENTS.md),
+               "When to mention a push".
 ```
 
 ### Division of labour
@@ -818,21 +885,111 @@ missing tenant filter is not the same class of problem as an awkward variable na
 3. **Report any discrepancy** between this document and what you find, and update this
    file. Treat the code as the source of truth.
 
-4. **Identify the next increment.** The `Comment` model is reviewed
-   and not migrated. Do not rewrite it. When Varun asks what the step
-   is, he runs `pnpm --filter @devflow/db migrate` with the name
-   `add_comments`, then `pnpm --filter @devflow/db generate`. No
-   comment route in that step. `authorId` must stay `@db.Uuid`
-   `@map("author_id")`.
+4. **Identify the next increment.** Label create and list are done. Do
+   not rewrite those routes. Migration
+   `20261115015526_issue_label_composite_fkey` is applied. Verified
+   15 November 2026 against Postgres: `issue_labels` foreign keys are
+   `(issue_id, organization_id)` → `issues(id, organization_id)`,
+   `(label_id, organization_id)` → `labels(id, organization_id)`, and
+   `organization_id` → `organizations(id)`. Do not edit that migration.
+
+   Attach-label is written. Do not rewrite it. `POST
+   /orgs/:orgId/projects/:projectId/issues/:issueId/labels`. The body
+   field is `labelId` only (`apply-label.schema.ts`, `z.uuid()`).
+   `can()` has `label` `apply` at `DEVELOPER`. `IssueLabelsController`
+   parses the body, then `LabelsService.applyLabel` calls
+   `can(role, "apply", "label")`, `IssuesService.getIssue`, and
+   `prisma.label.findFirst` on `id` and `organizationId` from the
+   guard. A missing label is 404 `"Not found"`. `issueLabel.create`
+   writes `issueId`, `labelId`, and that `organizationId`. `P2002` is
+   409 `"This label is already attached to the issue"`. The labels
+   module imports `IssuesModule` and does not query `issues`.
+   `@devflow/api` typecheck passed 16 November 2026. The
+   route was probed 16 November 2026 against `localhost:4000`.
+   Happy path 201 with `issueId`, `labelId`, and the URL
+   `organizationId`. Duplicate 409. A label from another
+   organization 404 and left the join-row count unchanged. An
+   issue from another project in the same org 404. No cookie 401.
+   Viewer 403. `{}` and a non-uuid `labelId` 400. An unknown uuid
+   404. Do not rewrite it. `GET` on that path returns the attached
+   labels as `{ id, name }[]`, name ascending, take 100. The guard
+   and the service both use `can(role, "read", "label")`. Probed
+   16 November 2026: empty 200 `[]`, two labels in name order,
+   viewer GET 200, viewer POST 403, other-project issue 404, no
+   cookie 401, non-member 404. Do not rewrite it.
+
+   Detach is written. Do not rewrite it. `DELETE
+   /orgs/:orgId/projects/:projectId/issues/:issueId/labels/:labelId`.
+   No body. `can()` has `label` `remove` at `DEVELOPER`. The guard
+   and `LabelsService.detachLabel` both call
+   `can(role, "remove", "label")`. The service calls
+   `IssuesService.getIssue`, then `issueLabel.deleteMany` where
+   `issueId`, `labelId`, and `organizationId` come from the guard
+   and the path. `count === 0` is 404 `"Not found"`. The `labels`
+   row is left in place. Success is 204. `@devflow/api` typecheck
+   passed 21 November 2026. It has not been probed against a
+   running API.
+
+   Rename is written. Do not rewrite it. `PATCH
+   /orgs/:orgId/labels/:labelId`. The body is `name` only, parsed
+   with `createLabelSchema`. `labelId` is the path parameter.
+   `can()` has `label` `update` at `DEVELOPER`. The guard and
+   `LabelsService.updateLabel` both call `can(role, "update", "label")`.
+   `label.updateManyAndReturn` filters `id` and `organizationId`
+   from the guard. An empty result is 404 `"Not found"`. `P2002`
+   is 409 `"A label with this name already exists in this organization"`.
+   The updated row is returned. `@devflow/api` typecheck passed
+   21 November 2026. It has not been probed against a running API.
+   Delete-label is written. Do not rewrite it. `DELETE
+   /orgs/:orgId/labels/:labelId`. No body. `can()` has `label`
+   `delete` at `ADMIN`. The guard and `LabelsService.deleteLabel`
+   both call `can(role, "delete", "label")`. `label.deleteMany`
+   filters `id` and `organizationId` from the guard. `count === 0`
+   is 404 `"Not found"`. Success is 204 with an empty body.
+   `IssueLabel.label` is `onDelete: Cascade`, so the join rows
+   go and the issues stay. `@devflow/api` typecheck passed
+   21 November 2026. It has not been probed.
+
+   CORS is written. Do not rewrite it. `CORS_ORIGIN` is required and
+   must be an origin (`new URL(value).origin === value`).
+   `AppConfig.corsOrigin` is that value. `main.ts` calls
+   `enableCors({ origin, credentials: true })`. Probed 21 November
+   2026: preflight and `GET /health` with
+   `Origin: http://localhost:3000` returned that origin and
+   `Access-Control-Allow-Credentials: true`. `Origin: http://evil.example`
+   still got `Access-Control-Allow-Origin: http://localhost:3000`.
+   `apps/web/next.config.ts` loads the root `.env`. Verified 21 November
+   2026: importing it from `apps/web` set `NEXT_PUBLIC_API_URL` to
+   `http://localhost:4000`, and `@devflow/web` typecheck passed.
+   `/login` is written. Do not rewrite it. The page posts
+   `{ email, password }` to `/auth/login` with `credentials: "include"`,
+   shows `name` and `email` on 201, then `GET /auth/me`. Probed
+   21 November 2026 in the browser: a short password showed the 400
+   field message, an unknown user showed `Invalid email or password`,
+   and a real login showed the name plus `Session cookie stored`.
+   The home page still does not call the API. The issue page is
+   written. Do not rewrite the issue GET. It also GETs
+   `.../issues/:issueId/comments` after the issue is ready and
+   renders that outcome under the heading. Probed 22 November 2026
+   in the browser: no cookie showed the login link, `#1 Shows two
+   comments` listed `Oldest comment` then `Newer comment`, `#2 Shows
+   no comments` showed `No comments`, and a missing issue id showed
+   `Not found`. The page also POSTs `{ body }` to that comments URL
+   when the list is ready. Probed 22 November 2026: a blank submit
+   showed `Enter a comment` and left the list in place; `#2` gained
+   `Posted from the issue page` and cleared the textarea; `#1` showed
+   `Third comment` after the two existing rows, including after a
+   reload. Do not rewrite that form. Listing labels on the issue
+   page is the next increment.
 
    On 25 Oct 2026, `node --experimental-strip-types` loaded `app.module.ts` and
    failed on `@Module`. Node strips types and does not understand Nest
    decorators, so the test must not import the app. It calls a running API
    with `fetch`. `Headers.prototype.getSetCookie` exists on Node 25.1.0.
 
-   **His task, and only this task.** He writes
-   `apps/api/test/organization-isolation.test.ts`. He starts the API with
-   `pnpm --filter @devflow/api dev`, then runs
+   **The isolation test is already written. Do not rewrite it.** It lives
+   at `apps/api/test/organization-isolation.test.ts`. Run it against a
+   started API: `pnpm --filter @devflow/api dev`, then
    `node --test apps/api/test/organization-isolation.test.ts`.
    Nest compiles with `tsconfig.build.json` (`rootDir` `src` only).
    `tsconfig.json` typechecks `src` and `test` with `rootDir` `.`.

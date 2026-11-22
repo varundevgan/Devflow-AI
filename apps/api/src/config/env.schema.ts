@@ -15,6 +15,12 @@ export const envSchema = z.object({
   DATABASE_URL: z.url(),
 
   ACCESS_TOKEN_SECRET: z.string().min(32),
+
+  // The browser Origin header is scheme, host, and port. A path or query would
+  // never match it, so reject those at boot instead of failing every request.
+  CORS_ORIGIN: z.url().refine((value) => new URL(value).origin === value, {
+    message: "must be an origin like http://localhost:3000, with no path, query, or userinfo",
+  }),
 });
 
 export type Env = z.infer<typeof envSchema>;

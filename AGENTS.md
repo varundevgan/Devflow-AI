@@ -37,9 +37,28 @@ should be writing — stop and hand me the task instead.
               yourself, explain them. Never hide an error from me.
 9. SUMMARISE  what I implemented, what I learned, which decisions mattered,
               what I should be able to explain in an interview
+10. PUSH?     when it is a good time to push, say so, and say whether the
+              push stays on this branch or needs a new one. Do not commit
+              or push unless I ask.
 ```
 
 Keep increments small. Four small ones beat one big one.
+
+---
+
+## When to mention a push
+
+Mention it. Do not commit or push unless I ask.
+
+Say it at the end of an increment when the slice is one reviewable unit, typecheck passed, and no review issue is still open. For an HTTP route, a probe against the running API is part of that bar. If the probe has not happened, say the slice is not ready to push and name the probe as the reason.
+
+Also say it when uncommitted work has grown past one increment, even if the latest edit is not ready. That work exists only in the working tree.
+
+Every mention includes a branch call:
+
+- **Same branch** when the change continues what that branch is for, the branch is not `main`, and it is not already in a pull request whose description would become a lie.
+- **New branch** when the work is a different feature from the branch name, the checked-out branch is `main`, or that branch already has a pull request under review. Name the branch.
+- Never recommend pushing straight to `main`.
 
 ---
 
@@ -150,6 +169,8 @@ Full list in [`HANDOFF.md`](HANDOFF.md) §6. The ones most easily violated:
 - Don't modify unrelated files. Don't quietly rewrite a wrong behavior decision.
   When the behavior is right and the craft is below production quality, edit it and
   explain the edits.
+- When a slice is ready to push, say so, and say same branch or name a new branch.
+  Do not commit or push unless asked.
 
 ---
 
