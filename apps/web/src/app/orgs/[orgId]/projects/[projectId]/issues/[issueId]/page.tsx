@@ -167,6 +167,20 @@ function withoutComment(
   return { status: "ready", value: current.value.filter((item) => item.id !== commentId) };
 }
 
+function replaceComment(
+  current: RemoteState<CommentSummary[]>,
+  comment: CommentSummary,
+): RemoteState<CommentSummary[]> {
+  if (current.status !== "ready") {
+    return current;
+  }
+
+  return {
+    status: "ready",
+    value: current.value.map((item) => (item.id === comment.id ? comment : item)),
+  };
+}
+
 function readList<T>(body: unknown, readItem: (item: unknown) => T | undefined): T[] | undefined {
   if (!Array.isArray(body)) {
     return undefined;
@@ -332,9 +346,15 @@ export default function IssuePage({ params }: IssuePageProps) {
   const [formNotice, setFormNotice] = useState<Notice>({ status: "idle" });
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
   const [deleteCommentNotice, setDeleteCommentNotice] = useState<Notice>({ status: "idle" });
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editNotice, setEditNotice] = useState<Notice>({ status: "idle" });
   const postController = useRef<AbortController | null>(null);
   const deleteCommentController = useRef<AbortController | null>(null);
   const deleteCommentLock = useRef(false);
+  const editCommentController = useRef<AbortController | null>(null);
+  const editCommentLock = useRef(false);
   const attachController = useRef<AbortController | null>(null);
   const attachLock = useRef(false);
   const detachController = useRef<AbortController | null>(null);
@@ -364,6 +384,11 @@ export default function IssuePage({ params }: IssuePageProps) {
     setDeletingCommentId(null);
     setDeleteCommentNotice({ status: "idle" });
     deleteCommentLock.current = false;
+    setEditingCommentId(null);
+    setEditDraft("");
+    setSavingEdit(false);
+    setEditNotice({ status: "idle" });
+    editCommentLock.current = false;
 
     const controller = new AbortController();
 
@@ -456,6 +481,7 @@ export default function IssuePage({ params }: IssuePageProps) {
       controller.abort();
       postController.current?.abort();
       deleteCommentController.current?.abort();
+      editCommentController.current?.abort();
       attachController.current?.abort();
       detachController.current?.abort();
     };
@@ -565,6 +591,104 @@ export default function IssuePage({ params }: IssuePageProps) {
       deleteCommentLock.current = false;
       if (!controller.signal.aborted) {
         setDeletingCommentId(null);
+      }
+    }
+  }
+
+  function onStartEdit(comment: CommentSummary) {
+    if (editCommentLock.current || editingCommentId !== null) {
+      return;
+    }
+
+    setEditingCommentId(comment.id);
+    setEditDraft(comment.body);
+    setEditNotice({ status: "idle" });
+  }
+
+  function onCancelEdit() {
+    if (editCommentLock.current) {
+      return;
+    }
+
+    setEditingCommentId(null);
+    setEditDraft("");
+    setEditNotice({ status: "idle" });
+  }
+
+  async function onSaveEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const commentId = editingCommentId;
+    if (commentId === null || editCommentLock.current) {
+      return;
+    }
+
+    const body = editDraft.trim();
+    if (body.length === 0) {
+      setEditNotice({ status: "error", message: "Enter a comment" });
+      return;
+    }
+
+    if (API_URL === undefined || API_URL.length === 0) {
+      setEditNotice({ status: "error", message: "NEXT_PUBLIC_API_URL is missing" });
+      return;
+    }
+
+    editCommentLock.current = true;
+    const controller = new AbortController();
+    editCommentController.current = controller;
+    setSavingEdit(true);
+    setEditNotice({ status: "idle" });
+
+    try {
+      const response = await apiFetch(`${path}/comments/${encodeURIComponent(commentId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ body }),
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted) {
+        return;
+      }
+
+      const failure = await failureNotice(response, {
+        400: "Comment was rejected",
+        403: "Forbidden",
+        404: "Not found",
+      });
+      if (controller.signal.aborted) {
+        return;
+      }
+      if (failure !== undefined) {
+        setEditNotice(failure);
+        return;
+      }
+
+      if (response.status !== 200) {
+        setEditNotice({ status: "error", message: `Request failed (${response.status})` });
+        return;
+      }
+
+      const updated = readComment(await response.json().catch(() => null));
+      if (updated === undefined) {
+        setEditNotice({ status: "error", message: "Comment payload was unreadable" });
+        return;
+      }
+
+      setCommentState((current) => replaceComment(current, updated));
+      setEditingCommentId(null);
+      setEditDraft("");
+    } catch (error) {
+      if (isAbort(error) || controller.signal.aborted) {
+        return;
+      }
+
+      setEditNotice({ status: "error", message: "Could not reach the API" });
+    } finally {
+      if (editCommentController.current === controller) {
+        editCommentController.current = null;
+      }
+      editCommentLock.current = false;
+      if (!controller.signal.aborted) {
+        setSavingEdit(false);
       }
     }
   }
@@ -803,7 +927,37 @@ export default function IssuePage({ params }: IssuePageProps) {
                     }}
                   >
                     {deletingCommentId === comment.id ? "Deleting" : "Delete"}
+                  </button>{" "}
+                  <button
+                    type="button"
+                    disabled={editingCommentId !== null}
+                    onClick={() => {
+                      onStartEdit(comment);
+                    }}
+                  >
+                    Edit
                   </button>
+                  {editingCommentId === comment.id ? (
+                    <form onSubmit={onSaveEdit}>
+                      <label>
+                        Comment
+                        <textarea
+                          name="body"
+                          value={editDraft}
+                          onChange={(event) => {
+                            setEditDraft(event.target.value);
+                          }}
+                        />
+                      </label>
+                      <button type="submit" disabled={savingEdit}>
+                        {savingEdit ? "Saving" : "Save"}
+                      </button>{" "}
+                      <button type="button" disabled={savingEdit} onClick={onCancelEdit}>
+                        Cancel
+                      </button>
+                      <FormNotice notice={editNotice} />
+                    </form>
+                  ) : null}
                 </li>
               ))}
             </ul>
