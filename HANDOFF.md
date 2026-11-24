@@ -1,16 +1,14 @@
 # DevFlow AI — Agent Handoff
 
-**Last verified:** 22 November 2026. Branch `comments` is `e92e487`,
-same as `main` and `origin/main`. Still uncommitted: comments,
-labels, both label migrations, CORS, `/login`, and the issue page.
-`@devflow/web` typecheck passed. The issue page shows `number` and
-`title`, lists comments, and posts a comment onto that list. Probed
-in the browser the same day: an empty issue gained `Posted from the
-issue page` and the textarea cleared; an issue that already had two
-comments showed the new one last; a blank submit showed `Enter a
-comment` and left the list alone. A reload returned the new row.
-The next increment is listing the labels on that issue. Do not
-rewrite the issue GET, the comment routes, or the label routes.
+**Last verified:** 24 November 2026. `main` and `origin/main` are
+`4664387`, the merge of pull request #7. This commit is on
+`issue-page`. It adds `apps/web/src/lib/api.ts`, points login at
+it, and lets the issue page attach and detach labels and delete
+a comment without reloading those lists. A repeated label detach
+and a repeated delete of your own comment return 204. The next
+increment is editing a comment, on a new branch
+`issue-comment-edit`. Do not rewrite the issue GET, the comment
+post form, the label routes, or `CommentsService.deleteComment`.
 Section 10.
 Where this document and the code disagree, **the code is right and this document is
 stale** — fix the document.
@@ -63,10 +61,10 @@ Attach-label is written, typechecks, and was probed 16 November
 2026. Listing labels on one issue is implemented and was probed
 16 November 2026: empty 200 `[]`, names ascending as `{ id, name }`,
 viewer GET 200, viewer POST 403, other-project issue 404, no cookie
-401, non-member 404. Detach-label is implemented.
-`DELETE .../labels/:labelId` returns 204. `can()` has `label`
-`remove` at `DEVELOPER`. `@devflow/api` typecheck passed
-21 November 2026. It has not been probed. Do not rewrite it.
+401, non-member 404. Detach-label returns 204 when the issue
+is in this project and organization, including when the join row
+is already gone. A missing issue is still 404. The `labels` row
+stays. Probed 22 November 2026. Do not rewrite it.
 See section 10.
 
 ---
@@ -655,9 +653,11 @@ stay on the server.
   applied. Attach-label is implemented, typechecks, and was probed
   16 November 2026. Do not rewrite it. Listing the labels on one
   issue is implemented and was probed the same day. Detach-label is
-  implemented: `DELETE .../issues/:issueId/labels/:labelId`, 204,
-  `can(role, "remove", "label")` at `DEVELOPER`. Typecheck passed
-  21 November 2026. It has not been probed. Do not rewrite it.
+  implemented: `DELETE .../issues/:issueId/labels/:labelId` returns
+  204 when the issue exists in that project and organization,
+  including when no join row matched. A missing issue is 404.
+  `can(role, "remove", "label")` is `DEVELOPER`. Probed
+  22 November 2026. Do not rewrite it.
   Section 10.
 
 ### Remaining
@@ -925,10 +925,14 @@ missing tenant filter is not the same class of problem as an awkward variable na
    `can(role, "remove", "label")`. The service calls
    `IssuesService.getIssue`, then `issueLabel.deleteMany` where
    `issueId`, `labelId`, and `organizationId` come from the guard
-   and the path. `count === 0` is 404 `"Not found"`. The `labels`
-   row is left in place. Success is 204. `@devflow/api` typecheck
-   passed 21 November 2026. It has not been probed against a
-   running API.
+   and the path. A missing join row is still 204. The `labels`
+   row is left in place. A missing issue is 404 from `getIssue`.
+   `@devflow/api` typecheck passed 22 November 2026. Probed the
+   same day: an unattached label returned 204 and left `alpha` in
+   place, deleting `alpha` returned 204 and the list was `[]`,
+   repeating that delete returned 204, and an unknown issue id
+   returned 404. `alpha` was attached again afterward. Do not
+   rewrite it.
 
    Rename is written. Do not rewrite it. `PATCH
    /orgs/:orgId/labels/:labelId`. The body is `name` only, parsed
@@ -979,8 +983,29 @@ missing tenant filter is not the same class of problem as an awkward variable na
    showed `Enter a comment` and left the list in place; `#2` gained
    `Posted from the issue page` and cleared the textarea; `#1` showed
    `Third comment` after the two existing rows, including after a
-   reload. Do not rewrite that form. Listing labels on the issue
-   page is the next increment.
+   reload. Do not rewrite that form. Each comment has Delete.
+   `DELETE .../comments/:commentId` has no body. On 204 the page
+   drops that id and does not GET again. A repeat delete by the
+   author is also 204. A comment id that is not on the issue is
+   404, and the page leaves the row. Someone else's comment is
+   403. Probed 24 November 2026: first and second delete of a new
+   comment were 204 with an empty body, an unknown comment id was
+   404, and an unknown issue id was 404. Do not rewrite
+   `CommentsService.deleteComment`. Editing a comment on this page
+   is the next increment. Do not rewrite `updateComment` until that
+   task says to. The page also GETs
+   `.../issues/:issueId/labels` after the issue is ready and renders
+   the names above the comments. Probed 22 November 2026: `alpha`
+   then `zeta`, and `No labels` on an issue with none. Do not rewrite
+   that list. The page also GETs `/orgs/:orgId/labels` and POSTs
+   `{ labelId }` to the issue labels URL. On 201 the page inserts
+   that label, sorted by name, and does not GET the list again.
+   The 201 body is the join row, so the name comes from the
+   organization label already loaded. Each attached label has
+   Remove. `DELETE .../labels/:labelId` with no body. On 204 the
+   page drops that id and does not GET again. A second click does
+   not abort the write already sent. Probed 22 November 2026.
+   Do not rewrite that control.
 
    On 25 Oct 2026, `node --experimental-strip-types` loaded `app.module.ts` and
    failed on `@Module`. Node strips types and does not understand Nest

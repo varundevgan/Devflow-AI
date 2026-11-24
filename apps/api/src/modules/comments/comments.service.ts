@@ -77,7 +77,6 @@ export class CommentsService {
         id: commentId,
         issueId,
         organizationId,
-        deletedAt: null,
       },
     });
 
@@ -86,7 +85,7 @@ export class CommentsService {
     if (comment.authorId !== userId)
       throw new ForbiddenException("You cannot delete someone else's comment");
 
-    const commentCount = await this.prisma.comment.updateMany({
+    await this.prisma.comment.updateMany({
       data: {
         deletedAt: new Date(),
       },
@@ -98,8 +97,6 @@ export class CommentsService {
         organizationId,
       },
     });
-
-    if (commentCount.count === 0) throw new NotFoundException("Not found");
   }
 
   async updateComment(input: UpdateCommentProps) {

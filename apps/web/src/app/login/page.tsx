@@ -1,14 +1,14 @@
 "use client";
 import { type FormEvent, useState } from "react";
 
+import { apiFetch, API_URL } from "@/lib/api";
+
 type LoginUser = {
   name: string;
   email: string;
 };
 
 type SessionCheck = { status: "stored"; userId: string } | { status: "missing" };
-
-const apiUrl = process.env.NEXT_PUBLIC_API_URL;
 
 function messageFromBody(body: unknown): string {
   if (typeof body !== "object" || body === null || !("message" in body)) {
@@ -63,16 +63,14 @@ export default function LoginPage() {
     setError(undefined);
     setUser(undefined);
     setSession(undefined);
-    if (apiUrl === undefined || apiUrl.length === 0) {
+    if (API_URL === undefined || API_URL.length === 0) {
       setError("NEXT_PUBLIC_API_URL is missing");
       return;
     }
     setSubmitting(true);
     try {
-      const loginResponse = await fetch(`${apiUrl}/auth/login`, {
+      const loginResponse = await apiFetch("/auth/login", {
         method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
 
@@ -90,7 +88,7 @@ export default function LoginPage() {
       }
 
       setUser(loggedIn);
-      const meResponse = await fetch(`${apiUrl}/auth/me`, { credentials: "include" });
+      const meResponse = await apiFetch("/auth/me");
 
       if (meResponse.status === 401) {
         setSession({ status: "missing" });

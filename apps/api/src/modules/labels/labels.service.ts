@@ -169,17 +169,13 @@ export class LabelsService {
       role,
     });
 
-    const removed = await this.prisma.issueLabel.deleteMany({
+    await this.prisma.issueLabel.deleteMany({
       where: {
         issueId,
         labelId,
         organizationId,
       },
     });
-
-    if (removed.count === 0) {
-      throw new NotFoundException("Not found");
-    }
   }
 
   async updateLabel(input: UpdateLabelInput) {
