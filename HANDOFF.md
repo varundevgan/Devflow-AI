@@ -1,15 +1,17 @@
 # DevFlow AI — Agent Handoff
 
 **Last verified:** 24 November 2026. `main` and `origin/main` are
-`4664387`, the merge of pull request #7. This commit is on
-`issue-page`. It adds `apps/web/src/lib/api.ts`, points login at
-it, and lets the issue page attach and detach labels and delete
-a comment without reloading those lists. A repeated label detach
-and a repeated delete of your own comment return 204. The next
-increment is editing a comment, on a new branch
-`issue-comment-edit`. Do not rewrite the issue GET, the comment
-post form, the label routes, or `CommentsService.deleteComment`.
-Section 10.
+`0aa205f`, the merge of pull request #8. This commit is on
+`issue-comment-update`. The issue page can edit a comment.
+`PATCH` returns the row, and the page replaces that comment
+from the response. `@devflow/web` typecheck
+passed. Probed in the browser the same day on issue `#2`: a
+whitespace save showed `Enter a comment` and made no request;
+saving `Edited from the issue page` replaced the text and the
+only new request was the PATCH. The comment was restored to
+`Posted from the issue page`, and a reload still showed that.
+Do not rewrite the issue GET, the comment post form, the delete
+control, the label routes, or `CommentsService`. Section 10.
 Where this document and the code disagree, **the code is right and this document is
 stale** — fix the document.
 
@@ -991,9 +993,12 @@ missing tenant filter is not the same class of problem as an awkward variable na
    403. Probed 24 November 2026: first and second delete of a new
    comment were 204 with an empty body, an unknown comment id was
    404, and an unknown issue id was 404. Do not rewrite
-   `CommentsService.deleteComment`. Editing a comment on this page
-   is the next increment. Do not rewrite `updateComment` until that
-   task says to. The page also GETs
+   `CommentsService.deleteComment`. The page can also edit a
+   comment. `PATCH .../comments/:commentId` with `{ body }`. On
+   200 the page replaces that comment from the response and does
+   not GET again. A blank body shows `Enter a comment` and does
+   not call the API. Probed 24 November 2026. Do not rewrite
+   `CommentsService.updateComment`. The page also GETs
    `.../issues/:issueId/labels` after the issue is ready and renders
    the names above the comments. Probed 22 November 2026: `alpha`
    then `zeta`, and `No labels` on an issue with none. Do not rewrite
