@@ -1,20 +1,26 @@
 # DevFlow AI — Agent Handoff
 
-**Last verified:** 24 November 2026. `origin/main` is `0aa205f`,
-the merge of pull request #8. This branch is `org-label-create`,
-cut from that commit. The organization labels page lists labels
-and creates one from the POST response, without a follow-up GET.
-`@devflow/web` typecheck passed. Probed in the browser the same
-day: a blank name showed `Enter a label name` and made no request;
-`probe-label` appeared between `beta` and `zeta` and the input
-cleared; a second `alpha` showed the 409 message and left the
-list unchanged. That probe label was deleted through the existing
-label DELETE route, and a reload showed `alpha`, `beta`, `zeta`.
-Do not rewrite `LabelsService` or the issue page. Comment edit is
-on `issue-comment-update`, draft pull request #9, and is not in
-this branch. The next increment is editing the issue title, on
-`issue-title-edit`, cut from `main` after pull request #9 is
-merged. Do not rewrite `IssuesService`. Section 10.
+**Last verified:** 24 November 2026. Pull request #9 is merged as
+`1cee1ba`. This branch is `org-label-create`. The issue page can
+edit a comment. `PATCH` returns the row, and the page replaces
+that comment from the response. Probed in the browser the same
+day on issue `#2`: a whitespace save showed `Enter a comment`
+and made no request; saving `Edited from the issue page`
+replaced the text and the only new request was the PATCH. The
+comment was restored to `Posted from the issue page`, and a
+reload still showed that. This branch also adds the organization
+labels page. It lists labels and creates one from the POST
+response, without a follow-up GET. `@devflow/web` typecheck
+passed. Probed the same day: a blank name showed `Enter a label
+name` and made no request; `probe-label` appeared between `beta`
+and `zeta` and the input cleared; a second `alpha` showed the
+409 message and left the list unchanged. That probe label was
+deleted through the existing label DELETE route, and a reload
+showed `alpha`, `beta`, `zeta`. Do not rewrite `LabelsService`,
+`CommentsService`, or the issue page. The next increment is
+editing the issue title, on `issue-title-edit`, cut from `main`
+after this pull request merges. Do not rewrite `IssuesService`.
+Section 10.
 Where this document and the code disagree, **the code is right and this document is
 stale** — fix the document.
 
@@ -996,9 +1002,12 @@ missing tenant filter is not the same class of problem as an awkward variable na
    403. Probed 24 November 2026: first and second delete of a new
    comment were 204 with an empty body, an unknown comment id was
    404, and an unknown issue id was 404. Do not rewrite
-   `CommentsService.deleteComment`. Editing a comment is on
-   `issue-comment-update`, draft pull request #9. It is not on
-   this branch. Do not rewrite `updateComment`. The organization
+   `CommentsService.deleteComment`. The page can also edit a
+   comment. `PATCH .../comments/:commentId` with `{ body }`. On
+   200 the page replaces that comment from the response and does
+   not GET again. A blank body shows `Enter a comment` and does
+   not call the API. Probed 24 November 2026. Do not rewrite
+   `CommentsService.updateComment`. The organization
    labels page is `apps/web/src/app/orgs/[orgId]/labels/page.tsx`.
    It GETs `/orgs/:orgId/labels` and POSTs `{ name }`. On 201 it
    inserts the returned label by name and does not GET again. A
@@ -1006,8 +1015,9 @@ missing tenant filter is not the same class of problem as an awkward variable na
    409 message. Probed 24 November 2026, then the probe label was
    deleted. Do not rewrite `LabelsService.createLabel`. The next
    increment is editing the issue title on the issue page, on a
-   new branch `issue-title-edit`, after pull request #9 merges.
-   Do not rewrite `IssuesService.updateIssue`. The issue page also GETs
+   new branch `issue-title-edit`, after this pull request merges.
+   Pull request #9 is already merged. Do not rewrite
+   `IssuesService.updateIssue`. The issue page also GETs
    `.../issues/:issueId/labels` after the issue is ready and renders
    the names above the comments. Probed 22 November 2026: `alpha`
    then `zeta`, and `No labels` on an issue with none. Do not rewrite
