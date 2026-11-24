@@ -1,15 +1,20 @@
 # DevFlow AI — Agent Handoff
 
-**Last verified:** 24 November 2026. `main` and `origin/main` are
-`4664387`, the merge of pull request #7. This commit is on
-`issue-page`. It adds `apps/web/src/lib/api.ts`, points login at
-it, and lets the issue page attach and detach labels and delete
-a comment without reloading those lists. A repeated label detach
-and a repeated delete of your own comment return 204. The next
-increment is editing a comment, on a new branch
-`issue-comment-edit`. Do not rewrite the issue GET, the comment
-post form, the label routes, or `CommentsService.deleteComment`.
-Section 10.
+**Last verified:** 24 November 2026. `origin/main` is `0aa205f`,
+the merge of pull request #8. This branch is `org-label-create`,
+cut from that commit. The organization labels page lists labels
+and creates one from the POST response, without a follow-up GET.
+`@devflow/web` typecheck passed. Probed in the browser the same
+day: a blank name showed `Enter a label name` and made no request;
+`probe-label` appeared between `beta` and `zeta` and the input
+cleared; a second `alpha` showed the 409 message and left the
+list unchanged. That probe label was deleted through the existing
+label DELETE route, and a reload showed `alpha`, `beta`, `zeta`.
+Do not rewrite `LabelsService` or the issue page. Comment edit is
+on `issue-comment-update`, draft pull request #9, and is not in
+this branch. The next increment is editing the issue title, on
+`issue-title-edit`, cut from `main` after pull request #9 is
+merged. Do not rewrite `IssuesService`. Section 10.
 Where this document and the code disagree, **the code is right and this document is
 stale** — fix the document.
 
@@ -991,9 +996,18 @@ missing tenant filter is not the same class of problem as an awkward variable na
    403. Probed 24 November 2026: first and second delete of a new
    comment were 204 with an empty body, an unknown comment id was
    404, and an unknown issue id was 404. Do not rewrite
-   `CommentsService.deleteComment`. Editing a comment on this page
-   is the next increment. Do not rewrite `updateComment` until that
-   task says to. The page also GETs
+   `CommentsService.deleteComment`. Editing a comment is on
+   `issue-comment-update`, draft pull request #9. It is not on
+   this branch. Do not rewrite `updateComment`. The organization
+   labels page is `apps/web/src/app/orgs/[orgId]/labels/page.tsx`.
+   It GETs `/orgs/:orgId/labels` and POSTs `{ name }`. On 201 it
+   inserts the returned label by name and does not GET again. A
+   blank name shows `Enter a label name`. A duplicate shows the
+   409 message. Probed 24 November 2026, then the probe label was
+   deleted. Do not rewrite `LabelsService.createLabel`. The next
+   increment is editing the issue title on the issue page, on a
+   new branch `issue-title-edit`, after pull request #9 merges.
+   Do not rewrite `IssuesService.updateIssue`. The issue page also GETs
    `.../issues/:issueId/labels` after the issue is ready and renders
    the names above the comments. Probed 22 November 2026: `alpha`
    then `zeta`, and `No labels` on an issue with none. Do not rewrite
