@@ -350,11 +350,16 @@ export default function IssuePage({ params }: IssuePageProps) {
   const [editDraft, setEditDraft] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
   const [editNotice, setEditNotice] = useState<Notice>({ status: "idle" });
+  const [titleDraft, setTitleDraft] = useState("");
+  const [savingTitle, setSavingTitle] = useState(false);
+  const [titleNotice, setTitleNotice] = useState<Notice>({ status: "idle" });
   const postController = useRef<AbortController | null>(null);
   const deleteCommentController = useRef<AbortController | null>(null);
   const deleteCommentLock = useRef(false);
   const editCommentController = useRef<AbortController | null>(null);
   const editCommentLock = useRef(false);
+  const titleController = useRef<AbortController | null>(null);
+  const titleLock = useRef(false);
   const attachController = useRef<AbortController | null>(null);
   const attachLock = useRef(false);
   const detachController = useRef<AbortController | null>(null);
@@ -389,6 +394,10 @@ export default function IssuePage({ params }: IssuePageProps) {
     setSavingEdit(false);
     setEditNotice({ status: "idle" });
     editCommentLock.current = false;
+    setTitleDraft("");
+    setSavingTitle(false);
+    setTitleNotice({ status: "idle" });
+    titleLock.current = false;
 
     const controller = new AbortController();
 
@@ -426,6 +435,7 @@ export default function IssuePage({ params }: IssuePageProps) {
           return;
         }
 
+        setTitleDraft(issue.title);
         setState({ status: "ready", issue });
 
         const organizationTask = loadCollection(
@@ -482,6 +492,7 @@ export default function IssuePage({ params }: IssuePageProps) {
       postController.current?.abort();
       deleteCommentController.current?.abort();
       editCommentController.current?.abort();
+      titleController.current?.abort();
       attachController.current?.abort();
       detachController.current?.abort();
     };
@@ -693,6 +704,88 @@ export default function IssuePage({ params }: IssuePageProps) {
     }
   }
 
+  async function onSaveTitle(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (titleLock.current) {
+      return;
+    }
+
+    const title = titleDraft.trim();
+    if (title.length === 0) {
+      setTitleNotice({ status: "error", message: "Enter a title" });
+      return;
+    }
+
+    if (API_URL === undefined || API_URL.length === 0) {
+      setTitleNotice({ status: "error", message: "NEXT_PUBLIC_API_URL is missing" });
+      return;
+    }
+
+    titleLock.current = true;
+    const controller = new AbortController();
+    titleController.current = controller;
+    setSavingTitle(true);
+    setTitleNotice({ status: "idle" });
+
+    try {
+      const response = await apiFetch(path, {
+        method: "PATCH",
+        body: JSON.stringify({ title }),
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted) {
+        return;
+      }
+
+      const failure = await failureNotice(response, {
+        400: "Title was rejected",
+        403: "Forbidden",
+        404: "Not found",
+      });
+      if (controller.signal.aborted) {
+        return;
+      }
+      if (failure !== undefined) {
+        setTitleNotice(failure);
+        return;
+      }
+
+      if (response.status !== 200) {
+        setTitleNotice({ status: "error", message: `Request failed (${response.status})` });
+        return;
+      }
+
+      const updated = readIssue(await response.json().catch(() => null));
+      if (updated === undefined) {
+        setTitleNotice({ status: "error", message: "Issue payload was unreadable" });
+        return;
+      }
+
+      setState((current) => {
+        if (current.status !== "ready") {
+          return current;
+        }
+
+        return { status: "ready", issue: updated };
+      });
+      setTitleDraft(updated.title);
+    } catch (error) {
+      if (isAbort(error) || controller.signal.aborted) {
+        return;
+      }
+
+      setTitleNotice({ status: "error", message: "Could not reach the API" });
+    } finally {
+      if (titleController.current === controller) {
+        titleController.current = null;
+        titleLock.current = false;
+      }
+      if (!controller.signal.aborted) {
+        setSavingTitle(false);
+      }
+    }
+  }
+
   async function onAttach(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const labelId = selectedLabelId;
@@ -853,6 +946,22 @@ export default function IssuePage({ params }: IssuePageProps) {
           <h1>
             #{state.issue.number} {state.issue.title}
           </h1>
+          <form onSubmit={onSaveTitle}>
+            <label>
+              Title
+              <input
+                name="title"
+                value={titleDraft}
+                onChange={(event) => {
+                  setTitleDraft(event.target.value);
+                }}
+              />
+            </label>
+            <button type="submit" disabled={savingTitle}>
+              {savingTitle ? "Saving" : "Save title"}
+            </button>
+            <FormNotice notice={titleNotice} />
+          </form>
           <RemoteStatus state={labelState} loading="Loading labels" />
           {labelState.status === "ready" && labelState.value.length === 0 ? <p>No labels</p> : null}
           {labelState.status === "ready" && labelState.value.length > 0 ? (

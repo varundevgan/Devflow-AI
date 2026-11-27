@@ -1,7 +1,9 @@
 # DevFlow AI — Agent Handoff
 
-**Last verified:** 24 November 2026. Pull request #9 is merged as
-`1cee1ba`. This branch is `org-label-create`. The issue page can
+**Last verified:** 25 November 2026. Checked out `issue-title-edit` at
+`a440cc3`, the same commit as `main` (pull request #10 merged). The
+title edit is committed on this branch. `AGENTS.md` is still dirty.
+Pull request #9 is `1cee1ba`. The issue page can
 edit a comment. `PATCH` returns the row, and the page replaces
 that comment from the response. Probed in the browser the same
 day on issue `#2`: a whitespace save showed `Enter a comment`
@@ -17,9 +19,18 @@ and `zeta` and the input cleared; a second `alpha` showed the
 409 message and left the list unchanged. That probe label was
 deleted through the existing label DELETE route, and a reload
 showed `alpha`, `beta`, `zeta`. Do not rewrite `LabelsService`,
-`CommentsService`, or the issue page. The next increment is
-editing the issue title, on `issue-title-edit`, cut from `main`
-after this pull request merges. Do not rewrite `IssuesService`.
+`CommentsService`, the comment form, or the label controls. The
+issue page can also edit the title. The heading keeps the saved
+title. Save sends `PATCH` with `{ title }`. On 200 the page
+replaces the issue from that body and does not GET again. Whitespace
+shows `Enter a title` and makes no request. Probed 25 November 2026
+on a throwaway issue: whitespace left `#1 Original title` and
+recorded no fetch; `Edited from the issue page` updated the heading,
+and the only new request was that PATCH; a reload still showed it.
+The title was then saved back to `Original title`. The throwaway
+organization is still in the dev database. `@devflow/web` typecheck
+passed. Do not rewrite that form or `IssuesService.updateIssue`.
+Section 10 does not name a slice after this one.
 Section 10.
 Where this document and the code disagree, **the code is right and this document is
 stale** — fix the document.
@@ -332,6 +343,12 @@ Each of these was argued, not assumed. Do not silently reverse one.
 ---
 
 ## 4. Current repository state
+
+**Git, re-checked 25 November 2026:** `main` and `origin/main` are
+`a440cc3`. The checked-out branch is `issue-title-edit` at that same
+commit. The title edit is committed on this branch. `AGENTS.md`
+is still dirty. The rest of this section is the 8 November
+snapshot and is stale on the branch name.
 
 **Verified by inspection on 8 Nov 2026** (git and `prisma migrate status`). Row counts were not re-queried. `main` and `origin/main` are at `e92e487`. The working branch is `comments` at that same commit, with no upstream. `prisma migrate status` reported 7 migrations and "Database schema is up to date." `HANDOFF.md` is dirty once this paragraph is saved. Node, pnpm, and TypeScript were not re-checked this turn; the last check was Node 25.1.0, pnpm 10.33.2, TypeScript 6.0.3. Older SHA notes below this paragraph were not re-checked.
 
@@ -1013,11 +1030,19 @@ missing tenant filter is not the same class of problem as an awkward variable na
    inserts the returned label by name and does not GET again. A
    blank name shows `Enter a label name`. A duplicate shows the
    409 message. Probed 24 November 2026, then the probe label was
-   deleted. Do not rewrite `LabelsService.createLabel`. The next
-   increment is editing the issue title on the issue page, on a
-   new branch `issue-title-edit`, after this pull request merges.
-   Pull request #9 is already merged. Do not rewrite
-   `IssuesService.updateIssue`. The issue page also GETs
+   deleted. Do not rewrite `LabelsService.createLabel`. Title edit
+   is written on the issue page. Branch `issue-title-edit` is
+   checked out at `a440cc3` (same commit as `main`; pull request #10
+   is merged). The heading shows
+   the saved title. The field PATCHes `{ title }` on that issue path.
+   On 200, `readIssue` replaces `state.issue` and the draft. There
+   is no follow-up GET. Whitespace shows `Enter a title` and does
+   not call the API. A failure leaves the saved heading in place.
+   The in-flight controller is the only one that may clear
+   `titleLock`. Probed 25 November 2026, then the title was restored
+   to `Original title`. `@devflow/web` typecheck passed. Do not
+   rewrite that form or `IssuesService.updateIssue`. Section 10
+   does not name a following slice. The issue page also GETs
    `.../issues/:issueId/labels` after the issue is ready and renders
    the names above the comments. Probed 22 November 2026: `alpha`
    then `zeta`, and `No labels` on an issue with none. Do not rewrite
