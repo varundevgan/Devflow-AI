@@ -15,6 +15,7 @@ export class AppConfig {
   readonly databaseUrl: string;
   readonly accessTokenSecret: string;
   readonly corsOrigin: string;
+  readonly redisUrl: string;
 
   constructor(env: Env) {
     this.nodeEnv = env.NODE_ENV;
@@ -22,6 +23,7 @@ export class AppConfig {
     this.databaseUrl = env.DATABASE_URL;
     this.accessTokenSecret = env.ACCESS_TOKEN_SECRET;
     this.corsOrigin = env.CORS_ORIGIN;
+    this.redisUrl = env.REDIS_URL;
 
     // Configuration is read-only for the process lifetime. Freezing turns an
     // accidental write into an immediate error instead of a confusing one later.

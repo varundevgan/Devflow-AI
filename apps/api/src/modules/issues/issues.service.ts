@@ -1,7 +1,8 @@
 import { can } from "@/common/can";
 import { PrismaService } from "@/infra/prisma/prisma.service";
+import { QueueService } from "@/infra/queue/queue.service";
 import { Role } from "@devflow/db";
-import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 
 export interface CreateIssueProps {
   organizationId: string;
@@ -29,7 +30,12 @@ export type DeleteIssueProps = GetIssueProps;
 
 @Injectable()
 export class IssuesService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(IssuesService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly queueService: QueueService,
+  ) {}
 
   async createIssue(input: CreateIssueProps) {
     const { issueTitle, organizationId, projectId, role } = input;
@@ -66,6 +72,18 @@ export class IssuesService {
         },
       });
     });
+
+    try {
+      await this.queueService.enqueueIssueCreated({
+        issueId: issue.id,
+        organizationId,
+      });
+    } catch (error: unknown) {
+      this.logger.error(
+        "Failed to enqueue issue.created",
+        error instanceof Error ? error.stack : error,
+      );
+    }
 
     return issue;
   }
