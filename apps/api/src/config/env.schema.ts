@@ -21,6 +21,8 @@ export const envSchema = z.object({
   CORS_ORIGIN: z.url().refine((value) => new URL(value).origin === value, {
     message: "must be an origin like http://localhost:3000, with no path, query, or userinfo",
   }),
+
+  REDIS_URL: z.url(),
 });
 
 export type Env = z.infer<typeof envSchema>;

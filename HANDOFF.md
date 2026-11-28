@@ -1,9 +1,9 @@
 # DevFlow AI — Agent Handoff
 
-**Last verified:** 25 November 2026. Checked out `issue-title-edit` at
-`a440cc3`, the same commit as `main` (pull request #10 merged). The
-title edit is committed on this branch. `AGENTS.md` is still dirty.
-Pull request #9 is `1cee1ba`. The issue page can
+**Last verified:** 28 November 2026. Checked out `queue-connection` at
+`6f6b009` (`origin/main`, pull request #11 merged). The enqueue code
+is uncommitted. `HANDOFF.md` is dirty. `AGENTS.md` is not. Pull request
+#9 is `1cee1ba`. The issue page can
 edit a comment. `PATCH` returns the row, and the page replaces
 that comment from the response. Probed in the browser the same
 day on issue `#2`: a whitespace save showed `Enter a comment`
@@ -30,7 +30,29 @@ and the only new request was that PATCH; a reload still showed it.
 The title was then saved back to `Original title`. The throwaway
 organization is still in the dev database. `@devflow/web` typecheck
 passed. Do not rewrite that form or `IssuesService.updateIssue`.
-Section 10 does not name a slice after this one.
+The next increment is still the queue boundary, on `queue-connection`.
+`bullmq` `6.7.10` is installed on `@devflow/api`. `REDIS_URL` is read
+by `AppConfig`. `createIssue` enqueues `issue.created` after the
+transaction commits. `QueueService` constructs an `ioredis` `6.1.0`
+client and passes that instance to BullMQ. `@devflow/api` typecheck
+passed 28 November 2026. An earlier probe returned 201 with an empty
+Redis because BullMQ could not `require('ioredis')`. After the client
+change, `Probe after ioredis` returned 201 and
+`HGETALL bull:domain-events:<issue id>` showed `name` `issue.created`
+with that issue id and organization id. The Redis-down create was
+probed 28 November 2026: with `devflow-redis` stopped, the create
+logged `Failed to enqueue issue.created` (`ECONNREFUSED` on port
+6379) and the issue row `Redis down probe`
+(`01a221f9-789b-75e8-9e1a-c988c31348f5`) was committed. After
+`docker start`, `LRANGE bull:domain-events:wait 0 -1` contained
+only `01a221d6-db90-70f9-9c1c-1a55820935f4`. `QueueService` sets
+`maxRetriesPerRequest` to `1`. A second down probe the same day,
+`Redis down probe retry 1`
+(`01a2223c-331c-77b2-b91d-a67e34a9a8fd`), returned 201 in 1.64
+seconds. The log was `MaxRetriesPerRequestError` with limit `1`.
+After restart, `wait` was still only the older job. There is no
+worker. The transactional outbox
+is deferred until a dropped job would hide a visible side effect.
 Section 10.
 Where this document and the code disagree, **the code is right and this document is
 stale** — fix the document.
@@ -158,8 +180,16 @@ They share domain code through the monorepo.
 **Critical rule: enqueue only *after* the database transaction commits.** Enqueueing
 inside the transaction lets a worker pick up a job and query a row that does not exist
 yet, or will never exist if the transaction rolls back. We accept the small window where
-commit succeeds and enqueue fails; the proper fix is a transactional outbox, documented
-as a known limitation rather than built speculatively.
+commit succeeds and enqueue fails.
+
+**Transactional outbox — implement later, not in the queue slice.** Decided 27 November
+2026. Postgres and Redis cannot commit together. The outbox writes the "publish this
+job" row in the same transaction as the domain row. A poller then adds the BullMQ job
+and marks that row published. A second add of the same `jobId` is a no-op, which is
+why jobs stay idempotent either way. Build it when a dropped job would hide something
+a person can notice, such as an activity row. Until then a lost `issue.created` job
+loses nothing visible: the issue row is already committed. Do not add the outbox
+table, the poller, or a second write on create in `queue-connection`.
 
 Every job must be **idempotent** — BullMQ delivers at least once.
 
@@ -344,10 +374,10 @@ Each of these was argued, not assumed. Do not silently reverse one.
 
 ## 4. Current repository state
 
-**Git, re-checked 25 November 2026:** `main` and `origin/main` are
-`a440cc3`. The checked-out branch is `issue-title-edit` at that same
-commit. The title edit is committed on this branch. `AGENTS.md`
-is still dirty. The rest of this section is the 8 November
+**Git, re-checked 28 November 2026:** `origin/main` is `6f6b009`, the
+merge of pull request #11. The local checkout is `queue-connection` at
+that commit. The enqueue files, `package.json`, `pnpm-lock.yaml`, and
+`HANDOFF.md` are dirty. The rest of this section is the 8 November
 snapshot and is stale on the branch name.
 
 **Verified by inspection on 8 Nov 2026** (git and `prisma migrate status`). Row counts were not re-queried. `main` and `origin/main` are at `e92e487`. The working branch is `comments` at that same commit, with no upstream. `prisma migrate status` reported 7 migrations and "Database schema is up to date." `HANDOFF.md` is dirty once this paragraph is saved. Node, pnpm, and TypeScript were not re-checked this turn; the last check was Node 25.1.0, pnpm 10.33.2, TypeScript 6.0.3. Older SHA notes below this paragraph were not re-checked.
@@ -598,6 +628,12 @@ stay on the server.
     `Expected property name or '}' in JSON at position 1`. Use `Invoke-RestMethod`, or
     `curl.exe --%` with `\"` around JSON strings. `Invoke-WebRequest` is still the wrong
     tool on Windows PowerShell 5.1.
+
+12. **Transactional outbox is deferred.** Enqueue after the domain transaction
+    commits. The gap where commit succeeds and `queue.add` never runs is accepted
+    until a dropped job would hide a visible side effect (an activity row is the
+    example). Do not build the outbox table or poller in the first queue slice.
+    See section 2, "Transactional outbox — implement later".
 
 ---
 
@@ -1041,8 +1077,34 @@ missing tenant filter is not the same class of problem as an awkward variable na
    The in-flight controller is the only one that may clear
    `titleLock`. Probed 25 November 2026, then the title was restored
    to `Original title`. `@devflow/web` typecheck passed. Do not
-   rewrite that form or `IssuesService.updateIssue`. Section 10
-   does not name a following slice. The issue page also GETs
+   rewrite that form or `IssuesService.updateIssue`. Pull request #11
+   is merged as `6f6b009`. The queue slice is in progress on
+   `queue-connection` at that commit, and the code is uncommitted.
+   `bullmq` `6.7.10` is installed. `createIssue` enqueues
+   `issue.created` after the transaction, with `jobId` set to the
+   issue id. A Redis failure is logged and the issue is still
+   returned. `ioredis` `6.1.0` is installed. `QueueService` constructs
+   that client and passes the instance as `connection`, because pnpm
+   does not let BullMQ `require('ioredis')` from its own folder.
+   `@devflow/api` typecheck passed 28 November 2026. The first probe
+   (`Probe one`, `Probe two`) returned 201 and left Redis empty:
+   BullMQ could not load `ioredis`. After the client change,
+   `Probe after ioredis` returned 201 and the job hash was
+   `name` `issue.created` with that issue id and organization id.
+   The Redis-down create was probed 28 November 2026. With
+   `devflow-redis` stopped, create logged `Failed to enqueue
+   issue.created` (`ECONNREFUSED` on port 6379) and committed
+   `Redis down probe` (`01a221f9-789b-75e8-9e1a-c988c31348f5`).
+   After `docker start`, `wait` contained only
+   `01a221d6-db90-70f9-9c1c-1a55820935f4`. `QueueService` sets
+   `maxRetriesPerRequest` to `1`. A second down probe the same
+   day returned 201 in 1.64 seconds for `Redis down probe retry 1`
+   (`01a2223c-331c-77b2-b91d-a67e34a9a8fd`). The log was
+   `MaxRetriesPerRequestError` with limit `1`, and `wait` stayed
+   the older job. There is no worker.
+   Do not build the transactional outbox in this slice. It is deferred
+   until a dropped job would hide a visible side effect. See section 2.
+   Do not rewrite `IssuesService.updateIssue`. The issue page also GETs
    `.../issues/:issueId/labels` after the issue is ready and renders
    the names above the comments. Probed 22 November 2026: `alpha`
    then `zeta`, and `No labels` on an issue with none. Do not rewrite
